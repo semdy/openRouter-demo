@@ -49,6 +49,7 @@ export class ChatSession {
       for await (const chunk of stream) {
         if ("error" in chunk) {
           console.error(`Stream error: ${chunk.error?.message}`);
+          this.options.onCompletionError?.(chunk.error as unknown as Error);
           if (chunk.choices?.[0]?.finishReason === "error") {
             console.log("Stream terminated due to error");
           }
