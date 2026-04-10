@@ -1,8 +1,7 @@
 import { OpenRouter } from "@openrouter/sdk";
 
 const client = new OpenRouter({
-  apiKey:
-    "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",
+  apiKey: "your-openrouter-api-key",
 });
 
 export type Message = {
@@ -39,7 +38,7 @@ export class ChatSession {
         chatRequest: {
           models: ["openai/gpt-5.4", "anthropic/claude-opus-4.6-fast"],
           messages: this.messages.slice(-100), // 只保留最近100轮对话消息
-          maxCompletionTokens: 20,
+          maxCompletionTokens: 2000,
           stream: true,
         },
       });
