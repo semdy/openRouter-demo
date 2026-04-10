@@ -1,7 +1,8 @@
 import { OpenRouter } from "@openrouter/sdk";
 
 const client = new OpenRouter({
-  apiKey: "your-openrouter-api-key",
+  apiKey:
+    "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",
 });
 
 export type Message = {
@@ -15,6 +16,9 @@ export class ChatSession {
   options: {
     onReceiveMessage?: (message: Message) => void;
     onReceiveChunk?: (chunk: string) => void;
+    onCompletionError?: (error: Error) => void;
+    onCompletionDone?: () => void;
+    onCompletionFinally?: () => void;
   } = {};
 
   constructor(options = {}) {
@@ -35,7 +39,7 @@ export class ChatSession {
         chatRequest: {
           models: ["openai/gpt-5.4", "anthropic/claude-opus-4.6-fast"],
           messages: this.messages.slice(-100), // 只保留最近100轮对话消息
-          maxCompletionTokens: 2000,
+          maxCompletionTokens: 20,
           stream: true,
         },
       });
@@ -59,8 +63,12 @@ export class ChatSession {
       }
 
       this.appendContentToAssistantMessage(response);
+      this.options.onCompletionDone?.();
     } catch (error: any) {
       console.error(`Error: ${error.message ?? "Unknown error"}`);
+      this.options.onCompletionError?.(error);
+    } finally {
+      this.options.onCompletionFinally?.();
     }
   }
 

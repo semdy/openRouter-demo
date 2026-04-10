@@ -16,6 +16,7 @@ type MessageWithNodes = Message & { nodes?: ParsedNode[] };
 const messages = ref<MessageWithNodes[]>([]);
 const buffer = ref("");
 const input = ref("");
+const loading = ref(false);
 const md = getMarkdown();
 
 let msgId = 0;
@@ -24,12 +25,16 @@ const chatSession = new ChatSession({
   onReceiveMessage(message: AIMessage) {
     buffer.value = "";
     messages.value.push({ ...message, msgId: msgId++ });
+    loading.value = true;
   },
   onReceiveChunk(chunk: string) {
     buffer.value += chunk;
     const lastAssistantMsg = messages.value[messages.value.length - 1];
     lastAssistantMsg.content = buffer.value;
     lastAssistantMsg.nodes = parseMarkdownToStructure(buffer.value, md);
+  },
+  onCompletionFinally() {
+    loading.value = false;
   },
 });
 
@@ -60,7 +65,7 @@ async function send() {
     <div class="chat-input">
       <form @submit.prevent="send">
         <input type="text" v-model="input" placeholder="Type your message..." />
-        <button type="submit">Send</button>
+        <button type="submit" :disabled="loading">Send</button>
       </form>
     </div>
   </div>
@@ -126,5 +131,10 @@ async function send() {
   border: none;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.chat-input button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 </style>
