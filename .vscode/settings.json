@@ -1,0 +1,38 @@
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[vue]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit",
+    "source.fixAll.eslint": "explicit",
+    "source.fixAll.stylelint": "explicit",
+    "source.organizeImports": "never"
+  },
+  "i18n-ally.localesPaths": [
+    "src/locale",
+    "src/locales",
+    "src/langs",
+    "src/lang",
+    "src/i18n",
+    "src/languages"
+  ],
+  "cSpell.words": [
+    "markstream",
+    "openrouter",
+    "oxlint",
+    "oxfmt",
+    "antd",
+    "Iconfont",
+    "pinia",
+    "checkin",
+    "logined"
+  ]
+}
