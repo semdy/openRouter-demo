@@ -33,9 +33,9 @@ export class ChatSession {
     try {
       const stream = await client.chat.send({
         chatRequest: {
-          models: ["openai/gpt-5", "anthropic/claude-opus-4.6-fast"],
+          models: ["openai/gpt-5.4", "anthropic/claude-opus-4.6-fast"],
           messages: this.messages.slice(-100), // 只保留最近100轮对话消息
-          maxCompletionTokens: 50,
+          maxCompletionTokens: 2000,
           stream: true,
         },
       });
