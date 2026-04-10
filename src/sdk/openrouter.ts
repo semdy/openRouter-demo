@@ -14,7 +14,7 @@ export class ChatSession {
   messages: Message[] = [];
   options: {
     onReceiveMessage?: (message: Message) => void;
-    onReceiveChunk?: (chunk: string | null | undefined) => void;
+    onReceiveChunk?: (chunk: string) => void;
   } = {};
 
   constructor(options = {}) {
