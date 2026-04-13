@@ -6,10 +6,6 @@ const connection = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,
 });
 
-// console.log("DATABASE_URL=", process.env.DATABASE_URL);
-// const res = await pool.query("SELECT current_database()");
-// console.log("current_database:", res.rows[0]);
-
 export const WORKER_NAME = "chat-persist";
 
 const worker = new Worker(
