@@ -1,18 +1,14 @@
 import { Worker } from "bullmq";
 import Redis from "ioredis";
-import pkg from "pg";
+import { pool } from "./db/initDB.js";
 
-const { Pool } = pkg;
 const connection = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,
 });
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 10, // 最大连接数
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
+// console.log("DATABASE_URL=", process.env.DATABASE_URL);
+// const res = await pool.query("SELECT current_database()");
+// console.log("current_database:", res.rows[0]);
 
 export const WORKER_NAME = "chat-persist";
 
