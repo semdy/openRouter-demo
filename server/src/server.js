@@ -88,14 +88,14 @@ function trimMessagesByTokens(messages, maxTokens = 8000) {
   return result;
 }
 
-function trimMessagesByTurns(messages) {
-  const system = messages.find((m) => m.role === "system");
-  const rest = messages.filter((m) => m.role !== "system");
+// function trimMessagesByTurns(messages) {
+//   const system = messages.find((m) => m.role === "system");
+//   const rest = messages.filter((m) => m.role !== "system");
 
-  const trimmed = rest.slice(-MAX_TURNS * 2); // user+assistant
+//   const trimmed = rest.slice(-MAX_TURNS * 2); // user+assistant
 
-  return system ? [system, ...trimmed] : trimmed;
-}
+//   return system ? [system, ...trimmed] : trimmed;
+// }
 
 // ===== Streaming persistence =====
 async function appendPartial(conversationId, partial) {
@@ -164,9 +164,12 @@ app.post("/api/chat", async (req, res) => {
 
     // ===== call LLM =====
     const stream = await openRouter.chat.send({
-      model: "openai/gpt-4o",
-      messages,
-      stream: true,
+      chatRequest: {
+        models: ["openai/gpt-5.4", "anthropic/claude-opus-4.6-fast"],
+        messages,
+        maxCompletionTokens: 2000,
+        stream: true,
+      },
     });
 
     let assistantReply = "";
@@ -239,7 +242,7 @@ app.post("/api/chat", async (req, res) => {
 });
 
 // health checker
-app.get("/health", (_, res) => {
+app.get("/health/check", (_, res) => {
   res.send("ok");
 });
 

@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:15
-    container_name: chat-postgres
+    # container_name: chat-postgres
     restart: always
     environment:
       POSTGRES_USER: root
@@ -9,39 +9,74 @@ services:
       POSTGRES_DB: chatdb
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./src/db/init.sql:/docker-entrypoint-initdb.d/init.sql
 
   redis:
     image: redis:7
-    container_name: chat-redis
+    # container_name: chat-redis
     restart: always
     ports:
       - "6379:6379"
-    command: ["redis-server", "--maxmemory-policy", "noeviction"]
+    command:
+      [
+        "redis-server",
+        "--maxmemory-policy",
+        "noeviction",
+        "--maxmemory",
+        "256mb",
+      ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
   app:
     build: .
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
-    container_name: chat-app
+    # container_name: chat-app
+    restart: always
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     ports:
       - "3000:3000"
     command: node src/server.js
+    healthcheck:
+      # test: ["CMD", "curl", "-f", "http://localhost:3000/health/check"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/health/check').then(r=>{if(!r.ok)process.exit(1)})",
+        ]
+      interval: 10s # 每10秒检测一次
+      timeout: 3s # 超过3秒算失败
+      retries: 3 # 连续失败3次才标记 unhealthy
+      start_period: 10s # 启动后10秒内不算失败
 
   worker:
     build: .
-    container_name: chat-worker
+    # container_name: chat-worker
+    restart: always
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_healthy
     env_file:
       - .env
     command: node src/worker.js

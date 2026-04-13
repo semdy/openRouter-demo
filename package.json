@@ -12,6 +12,7 @@
     "@openrouter/sdk": "^0.11.2",
     "markstream-vue": "0.0.12-beta.1",
     "stream-monaco": "^0.0.22",
+    "uuid": "^13.0.0",
     "vue": "^3.5.32"
   },
   "devDependencies": {

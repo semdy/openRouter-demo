@@ -5,6 +5,7 @@ import MarkdownRender, {
   getMarkdown,
   parseMarkdownToStructure,
 } from "markstream-vue";
+import { v4 as uuidv4 } from "uuid";
 import { ChatSession, type Message as AIMessage } from "../sdk/openrouter";
 import "markstream-vue/index.css";
 
@@ -22,6 +23,7 @@ const md = getMarkdown();
 let msgId = 0;
 
 const chatSession = new ChatSession({
+  conversationId: uuidv4(),
   onReceiveMessage(message: AIMessage) {
     buffer.value = "";
     messages.value.push({ ...message, msgId: msgId++ });
