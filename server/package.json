@@ -1,0 +1,34 @@
+{
+  "name": "chat-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "dev:docker-build-and-up": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
+    "dev:docker-up": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up",
+    "prod:docker-build": "docker compose build",
+    "prod:docker-up": "docker compose up -d",
+    "prod:docker-build-and-up": "npm run prod:docker-build && npm run prod:docker-up",
+    "prod:docker-down": "docker compose down",
+    "prod:docker-build-compose": "docker compose up --build -d",
+    "build:image": "docker build -t chat-app:v1 ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@openrouter/sdk": "^0.12.0",
+    "bullmq": "^5.73.5",
+    "express": "^5.2.1",
+    "ioredis": "^5.10.1",
+    "pg": "^8.20.0",
+    "tiktoken": "^1.0.22"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: chat-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: chatdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./src/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  redis:
+    image: redis:7
+    container_name: chat-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--maxmemory-policy", "noeviction"]
+
+  app:
+    build: .
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    container_name: chat-app
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    command: node src/server.js
+
+  worker:
+    build: .
+    container_name: chat-worker
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    command: node src/worker.js
+
+volumes:
+  pgdata:

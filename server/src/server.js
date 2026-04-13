@@ -16,6 +16,8 @@ import express from "express";
 import Redis from "ioredis";
 import { OpenRouter } from "@openrouter/sdk";
 import { estimateTokens } from "./tokenizer.js";
+import { initDB } from "./db/initDB.js";
+import { chatQueue, QUEUE_NAME } from "./queue.js";
 
 const app = express();
 app.use(express.json());
@@ -34,7 +36,7 @@ const CONTINUE_PROMPT = `
 `;
 
 // ===== Redis =====
-const redis = new Redis();
+const redis = new Redis(process.env.REDIS_URL);
 
 // ===== OpenRouter =====
 const openRouter = new OpenRouter({
@@ -215,7 +217,7 @@ app.post("/api/chat", async (req, res) => {
       await saveHistory(conversationId, history);
 
       // 异步持久化
-      await chatQueue.add("persist", {
+      await chatQueue.add(QUEUE_NAME, {
         conversationId,
         messages: history.slice(-2), // 只存本轮 user + assistant
       });
@@ -236,9 +238,30 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
+// health checker
+app.get("/health", (_, res) => {
+  res.send("ok");
+});
+
+await initDB();
 app.listen(3000, () => {
   console.log("Server running at http://localhost:3000");
 });
+
+/**
+ * async function* chatStream(prompt) {
+  const stream = await openRouter.chat.send({...});
+
+  for await (const chunk of stream) {
+    if ('error' in chunk) {
+      throw new Error(chunk.error.message);
+    }
+
+    const content = chunk.choices?.[0]?.delta?.content;
+    if (content) yield content;
+  }
+}
+ */
 
 // =====================================
 // Frontend (fetch streaming + abort)

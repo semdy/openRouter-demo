@@ -1,0 +1,6 @@
+services:
+  app:
+    volumes:
+      - .:/app
+      - /app/node_modules # 保留容器内依赖
+    command: npm run dev
