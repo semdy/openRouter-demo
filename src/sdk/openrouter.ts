@@ -1,87 +1,102 @@
-import { OpenRouter } from "@openrouter/sdk";
-
-const client = new OpenRouter({
-  apiKey: "your-openrouter-api-key",
-});
-
 export type Message = {
   role: "system" | "user" | "assistant";
   content: string;
   name?: string;
 };
 
+export type ChatSessionOptions = {
+  conversationId: string;
+  onReceiveMessage?: (message: Message) => void;
+  onReceiveChunk?: (chunk: string) => void;
+  onCompletionError?: (error: Error) => void;
+  onCompletionDone?: () => void;
+  onCompletionFinally?: () => void;
+};
+
 export class ChatSession {
-  messages: Message[] = [];
-  options: {
-    onReceiveMessage?: (message: Message) => void;
-    onReceiveChunk?: (chunk: string) => void;
-    onCompletionError?: (error: Error) => void;
-    onCompletionDone?: () => void;
-    onCompletionFinally?: () => void;
-  } = {};
-
-  constructor(options = {}) {
-    this.options = options;
-  }
-
-  addSystemPrompt(systemPrompt: string) {
-    this.messages.push({ role: "system", content: systemPrompt });
+  controller: AbortController | null = null;
+  options: ChatSessionOptions = {} as ChatSessionOptions;
+  constructor(options: ChatSessionOptions) {
+    if (options) {
+      this.options = options;
+    }
+    if (!this.options.conversationId) {
+      throw new Error("No conversationId provided");
+    }
   }
 
   async send(userPrompt: string) {
+    if (this.controller) this.controller.abort();
+
     this.handleReceivedMessage({ role: "user", content: userPrompt });
 
-    let response = "";
+    this.controller = new AbortController();
+
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      signal: this.controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt,
+        conversationId: this.options.conversationId,
+      }),
+    });
+
+    const reader = res.body?.getReader();
+
+    if (!reader) throw new Error("No reader");
+
+    const decoder = new TextDecoder();
+
+    let buffer = "";
+
+    this.handleReceivedMessage({ role: "assistant", content: buffer });
 
     try {
-      const stream = await client.chat.send({
-        chatRequest: {
-          models: ["openai/gpt-5.4", "anthropic/claude-opus-4.6-fast"],
-          messages: this.messages.slice(-100), // 只保留最近100轮对话消息
-          maxCompletionTokens: 2000,
-          stream: true,
-        },
-      });
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      this.handleReceivedMessage({ role: "assistant", content: response });
+        buffer += decoder.decode(value, { stream: true });
 
-      for await (const chunk of stream) {
-        if ("error" in chunk) {
-          console.error(`Stream error: ${chunk.error?.message}`);
-          this.options.onCompletionError?.(chunk.error as unknown as Error);
-          if (chunk.choices?.[0]?.finishReason === "error") {
-            console.log("Stream terminated due to error");
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          const data = JSON.parse(line);
+
+          if (data.type === "content") {
+            this.handleReceivedChunk(data.content);
+          } else if (data.type === "error") {
+            console.error(data.message);
+            this.options.onCompletionError?.(new Error(data.message));
+          } else if (data.type === "end") {
+            console.log("done");
           }
-          return;
         }
-
-        const content = chunk.choices?.[0]?.delta?.content;
-        if (content) {
-          response += content;
-          this.options.onReceiveChunk?.(content);
-        }
+        this.options.onCompletionDone?.();
       }
-
-      this.appendContentToAssistantMessage(response);
-      this.options.onCompletionDone?.();
-    } catch (error: any) {
-      console.error(`Error: ${error.message ?? "Unknown error"}`);
-      this.options.onCompletionError?.(error);
+    } catch (error) {
+      console.error(error);
+      this.options.onCompletionError?.(error as unknown as Error);
     } finally {
       this.options.onCompletionFinally?.();
     }
   }
 
-  getContext() {
-    return this.messages;
-  }
-
   handleReceivedMessage(message: Message) {
-    this.messages.push(message);
     this.options.onReceiveMessage?.(message);
   }
 
-  appendContentToAssistantMessage(content: string) {
-    this.messages[this.messages.length - 1].content = content;
+  handleReceivedChunk(content: string) {
+    this.options.onReceiveChunk?.(content);
+  }
+
+  abort() {
+    this.controller?.abort();
   }
 }
