@@ -1,6 +1,9 @@
+import { v4 as uuid } from "uuid";
+
 export type Message = {
   role: "system" | "user" | "assistant";
   content: string;
+  messageId: string;
   name?: string;
 };
 
@@ -25,6 +28,11 @@ export type ConversationListItem = {
   createdAt: string;
   lastMessageRole: "assistant" | "user" | "system" | null;
   lastMessageContent: string | null;
+};
+
+export type ConversationListResponse = {
+  items: ConversationListItem[];
+  nextCursor: string | null;
 };
 
 type SSEFrame = {
@@ -56,6 +64,22 @@ function parseSSEFrame(frame: string): SSEFrame | null {
   };
 }
 
+export async function fetchConversations(cursor?: string, limit = 20) {
+  const params = new URLSearchParams();
+  params.set("pageSize", String(limit));
+  if (cursor) {
+    params.set("page", cursor);
+  }
+
+  const query = params.toString();
+  const res = await fetch(`/api/conversations${query ? `?${query}` : ""}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch conversations: ${res.status}`);
+  }
+
+  return (await res.json()) as ConversationListResponse;
+}
+
 export class ChatSession {
   controller: AbortController | null = null;
   options: ChatSessionOptions = {} as ChatSessionOptions;
@@ -71,7 +95,11 @@ export class ChatSession {
   async send(userPrompt: string) {
     this.abort();
 
-    this.handleReceivedMessage({ role: "user", content: userPrompt });
+    this.handleReceivedMessage({
+      role: "user",
+      content: userPrompt,
+      messageId: uuid(),
+    });
 
     this.controller = new AbortController();
 
@@ -99,7 +127,11 @@ export class ChatSession {
 
     let streamBuffer = "";
 
-    this.handleReceivedMessage({ role: "assistant", content: streamBuffer });
+    this.handleReceivedMessage({
+      role: "assistant",
+      content: streamBuffer,
+      messageId: uuid(),
+    });
 
     try {
       while (true) {

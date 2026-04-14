@@ -84,6 +84,10 @@ async function handlePersist(data) {
     const firstUserMessage = messages.find(
       (message) => message.role === "user",
     );
+    const conversationTitle = firstUserMessage?.content
+      ?.replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80);
     const existingConversationResult = await client.query(
       `
         SELECT title
@@ -105,7 +109,7 @@ async function handlePersist(data) {
           updated_at = NOW(),
           last_message_at = NOW()
       `,
-      [conversationId, userId, existingTitle],
+      [conversationId, userId, existingTitle || conversationTitle],
     );
     shouldGenerateTitle = existingTitle == null;
     if (shouldGenerateTitle) {

@@ -1,142 +1,589 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import type { ParsedNode } from "markstream-vue";
 import MarkdownRender, {
   getMarkdown,
   parseMarkdownToStructure,
 } from "markstream-vue";
-// import { v4 as uuidv4 } from "uuid";
-import { ChatSession, type Message as AIMessage } from "../sdk/openrouter";
+import {
+  ChatSession,
+  fetchConversations,
+  type ConversationListItem,
+  type Message,
+} from "@/sdk/openrouter";
+import { v4 as uuid } from "uuid";
 import "markstream-vue/index.css";
 
-type Message = AIMessage & {
-  msgId: number | string;
+type MessageWithNodes = Message & {
+  nodes?: ParsedNode[];
 };
-type MessageWithNodes = Message & { nodes?: ParsedNode[] };
 
-const messages = ref<MessageWithNodes[]>([]);
-const buffer = ref("");
+const md = getMarkdown();
+const messagesByConversation = ref<Record<string, MessageWithNodes[]>>({});
+const conversations = ref<ConversationListItem[]>([]);
+const conversationsLoading = ref(false);
+const conversationsError = ref("");
+const nextCursor = ref<string | null>(null);
+const loadingMore = ref(false);
 const input = ref("");
 const loading = ref(false);
-const md = getMarkdown();
+const activeConversationId = ref<string>(uuid());
+let refreshTimer: number | null = null;
 
-let msgId = 0;
+let chatSession = createChatSession(activeConversationId.value);
 
-const chatSession = new ChatSession({
-  conversationId: "ff9700b2-a894-47c5-b88e-1dcb858e2f0c", // uuidv4(),
-  onReceiveMessage(message: AIMessage) {
-    buffer.value = "";
-    messages.value.push({ ...message, msgId: msgId++ });
-    loading.value = true;
-  },
-  onReceiveChunk(chunk: string) {
-    buffer.value += chunk;
-    const lastAssistantMsg = messages.value[messages.value.length - 1];
-    lastAssistantMsg.content = buffer.value;
-    lastAssistantMsg.nodes = parseMarkdownToStructure(buffer.value, md);
-  },
-  onCompletionFinally() {
-    loading.value = false;
-  },
+const currentMessages = computed(() => {
+  return messagesByConversation.value[activeConversationId.value] ?? [];
 });
 
-async function send() {
-  const msg = input.value;
+const activeConversation = computed(() => {
+  return conversations.value.find(
+    (conversation) => conversation.id === activeConversationId.value,
+  );
+});
+
+function ensureConversationMessages(conversationId: string) {
+  if (!messagesByConversation.value[conversationId]) {
+    messagesByConversation.value[conversationId] = [];
+  }
+
+  return messagesByConversation.value[conversationId];
+}
+
+function createChatSession(conversationId: string) {
+  return new ChatSession({
+    conversationId,
+    onReceiveMessage(message: Message) {
+      const conversationMessages = ensureConversationMessages(conversationId);
+      conversationMessages.push(message);
+      loading.value = true;
+    },
+    onReceiveChunk(chunk: string) {
+      const conversationMessages = ensureConversationMessages(conversationId);
+      const lastAssistantMsg =
+        conversationMessages[conversationMessages.length - 1];
+      if (!lastAssistantMsg) return;
+
+      lastAssistantMsg.content += chunk;
+      lastAssistantMsg.nodes = parseMarkdownToStructure(
+        lastAssistantMsg.content,
+        md,
+      );
+    },
+    onConversationCreated(conversation) {
+      upsertConversation(conversation, true);
+      scheduleConversationRefresh();
+    },
+    onConversationUpdated(conversation) {
+      upsertConversation(conversation, true);
+      scheduleConversationRefresh();
+    },
+    onCompletionError(error) {
+      console.error(error);
+    },
+    onCompletionFinally() {
+      loading.value = false;
+    },
+  });
+}
+
+function previewConversation(conversation: ConversationListItem) {
+  return (
+    conversation.title || conversation.lastMessageContent || "New conversation"
+  );
+}
+
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function upsertConversation(
+  conversation: ConversationListItem,
+  moveToTop = false,
+) {
+  const existingIndex = conversations.value.findIndex(
+    (item) => item.id === conversation.id,
+  );
+
+  if (existingIndex === -1) {
+    conversations.value = [conversation, ...conversations.value];
+    return;
+  }
+
+  const existingConversation = conversations.value[existingIndex];
+  const updated = [...conversations.value];
+  updated.splice(existingIndex, 1);
+  const merged = {
+    ...existingConversation,
+    ...conversation,
+  };
+
+  if (moveToTop) {
+    updated.unshift(merged);
+  } else {
+    updated.splice(existingIndex, 0, merged);
+  }
+
+  conversations.value = updated;
+}
+
+function scheduleConversationRefresh(delay = 1500) {
+  if (refreshTimer !== null) {
+    window.clearTimeout(refreshTimer);
+  }
+
+  refreshTimer = window.setTimeout(async () => {
+    refreshTimer = null;
+
+    try {
+      const result = await fetchConversations();
+      const existingById = new Map(
+        conversations.value.map((conversation) => [
+          conversation.id,
+          conversation,
+        ]),
+      );
+      const merged = result.items.map((conversation) => ({
+        ...existingById.get(conversation.id),
+        ...conversation,
+      }));
+      const mergedIds = new Set(merged.map((conversation) => conversation.id));
+      conversations.value = [
+        ...merged,
+        ...conversations.value.filter(
+          (conversation) => !mergedIds.has(conversation.id),
+        ),
+      ];
+      nextCursor.value = result.nextCursor;
+    } catch (error) {
+      console.error(error);
+    }
+  }, delay);
+}
+
+async function loadConversations(loadMore = false) {
+  if (loadMore) {
+    if (!nextCursor.value || loadingMore.value) return;
+    loadingMore.value = true;
+  } else {
+    conversationsLoading.value = true;
+    conversationsError.value = "";
+  }
+
+  try {
+    const result = await fetchConversations(
+      loadMore ? (nextCursor.value ?? undefined) : undefined,
+    );
+    nextCursor.value = result.nextCursor;
+
+    if (loadMore) {
+      const existingIds = new Set(conversations.value.map((item) => item.id));
+      conversations.value = [
+        ...conversations.value,
+        ...result.items.filter((item) => !existingIds.has(item.id)),
+      ];
+    } else {
+      conversations.value = result.items;
+    }
+  } catch (error) {
+    conversationsError.value =
+      error instanceof Error ? error.message : "Failed to load conversations";
+  } finally {
+    conversationsLoading.value = false;
+    loadingMore.value = false;
+  }
+}
+
+function startNewConversation() {
+  chatSession.abort();
+  activeConversationId.value = uuid();
+  chatSession = createChatSession(activeConversationId.value);
+  ensureConversationMessages(activeConversationId.value);
   input.value = "";
+  loading.value = false;
+}
+
+function selectConversation(conversationId: string) {
+  if (conversationId === activeConversationId.value) return;
+
+  chatSession.abort();
+  activeConversationId.value = conversationId;
+  chatSession = createChatSession(conversationId);
+  ensureConversationMessages(conversationId);
+  loading.value = false;
+}
+
+async function send() {
+  const msg = input.value.trim();
+  if (!msg || loading.value) return;
+
+  input.value = "";
+  ensureConversationMessages(activeConversationId.value);
   await chatSession.send(msg);
 }
+
+await loadConversations();
+ensureConversationMessages(activeConversationId.value);
 </script>
 
 <template>
-  <div class="chat-container">
-    <div class="chat-messages">
-      <div class="chat-render">
-        <template v-for="message in messages" :key="message.msgId">
-          <div v-if="message.role === 'user'" class="chat-message user">
-            <div class="chat-content">{{ message.content }}</div>
-          </div>
-          <MarkdownRender
-            class="chat-message assistant"
-            :nodes="message.nodes"
-            is-dark
-            v-if="message.role === 'assistant'"
-          />
-        </template>
+  <div class="chat-shell">
+    <aside class="conversation-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Conversations</p>
+          <h2>Recent chats</h2>
+        </div>
+        <button
+          class="new-chat-button"
+          type="button"
+          @click="startNewConversation"
+        >
+          New Chat
+        </button>
       </div>
-    </div>
-    <div class="chat-input">
-      <form @submit.prevent="send">
-        <input type="text" v-model="input" placeholder="Type your message..." />
-        <button type="submit" :disabled="loading">Send</button>
-      </form>
-    </div>
+
+      <p v-if="conversationsError" class="panel-state error">
+        {{ conversationsError }}
+      </p>
+      <p v-else-if="conversationsLoading" class="panel-state">
+        Loading conversations...
+      </p>
+      <div v-else class="conversation-list">
+        <button
+          v-for="conversation in conversations"
+          :key="conversation.id"
+          type="button"
+          class="conversation-item"
+          :class="{ active: conversation.id === activeConversationId }"
+          @click="selectConversation(conversation.id)"
+        >
+          <div class="conversation-item-header">
+            <span class="conversation-title">
+              {{ previewConversation(conversation) }}
+            </span>
+            <span class="conversation-time">
+              {{ formatTime(conversation.lastMessageAt) }}
+            </span>
+          </div>
+          <p class="conversation-preview">
+            {{ conversation.lastMessageContent || "No messages yet" }}
+          </p>
+        </button>
+
+        <button
+          v-if="nextCursor"
+          type="button"
+          class="load-more-button"
+          :disabled="loadingMore"
+          @click="loadConversations(true)"
+        >
+          {{ loadingMore ? "Loading..." : "Load More" }}
+        </button>
+      </div>
+    </aside>
+
+    <section class="chat-panel">
+      <div class="chat-header">
+        <div>
+          <p class="eyebrow">Active conversation</p>
+          <h1>{{ activeConversation?.title || "New conversation" }}</h1>
+        </div>
+      </div>
+
+      <div class="chat-messages">
+        <div v-if="currentMessages.length === 0" class="empty-state">
+          <h3>Start a new conversation</h3>
+          <p>Ask a question and the chat list will update automatically.</p>
+        </div>
+
+        <div v-else class="chat-render">
+          <template v-for="message in currentMessages" :key="message.messageId">
+            <div v-if="message.role === 'user'" class="chat-message user">
+              <div class="chat-content">{{ message.content }}</div>
+            </div>
+            <MarkdownRender
+              v-else
+              class="chat-message assistant"
+              :nodes="message.nodes"
+              is-dark
+            />
+          </template>
+        </div>
+      </div>
+
+      <div class="chat-input">
+        <form @submit.prevent="send">
+          <input v-model="input" type="text" placeholder="Ask anything..." />
+          <button type="submit" :disabled="loading">
+            {{ loading ? "Thinking..." : "Send" }}
+          </button>
+        </form>
+      </div>
+    </section>
   </div>
 </template>
 
 <style>
-.chat-container {
+.chat-shell {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(19, 78, 74, 0.2), transparent 32%),
+    linear-gradient(180deg, #f7f5ef 0%, #f1ede5 100%);
+  color: #1b1f1e;
+}
+
+.conversation-panel {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  gap: 16px;
+  padding: 24px 18px;
+  border-right: 1px solid rgba(35, 52, 53, 0.12);
+  background: rgba(255, 252, 246, 0.84);
+  backdrop-filter: blur(16px);
+}
+
+.panel-header,
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #52706f;
+}
+
+.panel-header h2,
+.chat-header h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.new-chat-button,
+.load-more-button,
+.chat-input button {
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #134e4a, #0f766e);
+  color: #f7f5ef;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.new-chat-button,
+.load-more-button {
+  padding: 10px 14px;
+}
+
+.panel-state {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(15, 118, 110, 0.08);
+  color: #245754;
+}
+
+.panel-state.error {
+  background: rgba(191, 54, 12, 0.1);
+  color: #9a3412;
+}
+
+.conversation-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.conversation-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(35, 52, 53, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.conversation-item:hover,
+.conversation-item.active {
+  border-color: rgba(15, 118, 110, 0.35);
+  box-shadow: 0 14px 30px rgba(15, 118, 110, 0.08);
+}
+
+.conversation-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.conversation-title {
+  font-weight: 700;
+  color: #123533;
+}
+
+.conversation-time {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #6d7f7d;
+}
+
+.conversation-preview {
+  margin: 0;
+  color: #5b6766;
+  font-size: 14px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chat-header {
+  padding: 24px 28px 14px;
 }
 
 .chat-messages {
   flex: 1;
-  display: flex;
-  flex-direction: column-reverse;
+  min-height: 0;
   overflow-y: auto;
-  scroll-behavior: smooth;
-  overscroll-behavior: contain;
-  height: 100%;
+  padding: 0 28px 24px;
 }
 
 .chat-render {
-  flex: 1;
-  padding: 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  padding: 40px 24px;
+  text-align: center;
+  color: #566564;
+}
+
+.empty-state h3 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  color: #173d3a;
+}
+
+.empty-state p {
+  margin: 0;
+  max-width: 420px;
+  line-height: 1.6;
 }
 
 .chat-message.user {
   display: flex;
   justify-content: flex-end;
-  padding: 24px;
 }
 
 .chat-message.user .chat-content {
-  padding: 10px 16px;
-  background-color: #323232d9;
-  border-radius: 22px;
+  max-width: min(75%, 720px);
+  padding: 14px 18px;
+  border-radius: 22px 22px 8px 22px;
+  background: linear-gradient(135deg, #134e4a, #0f766e);
+  color: #f8faf9;
+  box-shadow: 0 16px 30px rgba(15, 118, 110, 0.16);
+}
+
+.chat-message.assistant {
+  max-width: min(85%, 780px);
+  padding: 18px 20px;
+  border-radius: 24px 24px 24px 10px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 16px 32px rgba(37, 66, 63, 0.08);
 }
 
 .chat-input {
-  display: flex;
-  padding: 10px;
+  padding: 18px 28px 28px;
 }
 
 .chat-input form {
-  flex: 1;
   display: flex;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(35, 52, 53, 0.1);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 18px 34px rgba(34, 64, 60, 0.08);
 }
 
 .chat-input input {
   flex: 1;
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #123533;
+  font-size: 15px;
 }
 
 .chat-input button {
-  margin-left: 10px;
-  padding: 10px 20px;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
+  padding: 0 20px;
 }
 
-.chat-input button:disabled {
-  background-color: #ccc;
+.chat-input button:disabled,
+.load-more-button:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
+}
+
+@media (max-width: 960px) {
+  .chat-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .conversation-panel {
+    border-right: none;
+    border-bottom: 1px solid rgba(35, 52, 53, 0.12);
+  }
+
+  .conversation-list {
+    max-height: 240px;
+  }
+
+  .chat-header,
+  .chat-messages,
+  .chat-input {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
 }
 </style>
