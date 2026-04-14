@@ -1,20 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { OpenRouter } from "@openrouter/sdk";
-import { chatQueue, QUEUE_NAME } from "./queue.js";
-import { CONTINUE_PROMPT, MAX_PROMPT_TOKENS } from "./config.js";
+import { client } from "../chat-client.js";
+import { chatQueue, QUEUE_NAME } from "../queue.js";
+import { CONTINUE_PROMPT, MAX_PROMPT_TOKENS } from "../config.js";
+import { buildConversationListItem } from "./conversationService.js";
 import {
   appendPartial,
   clearPartial,
   getHistory,
   reserveMessageIndexes,
   saveHistory,
-} from "./history.js";
-import { trimMessagesByTokens } from "./tokenizer.js";
-import { logger } from "./logger.js";
-
-const openRouter = new OpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
-});
+} from "../history.js";
+import { trimMessagesByTokens } from "../tokenizer.js";
+import { logger } from "../logger.js";
 
 export async function streamChatCompletion({
   prompt,
@@ -22,10 +19,13 @@ export async function streamChatCompletion({
   requestId,
   continuation,
   onDelta,
+  onConversationEvent,
   isClientClosed,
 }) {
   const startedAt = Date.now();
   const history = await getHistory(conversationId);
+  const isNewConversation =
+    history.filter((message) => message.role !== "system").length === 0;
   const requestHistory = [...history];
 
   if (continuation) {
@@ -47,7 +47,7 @@ export async function streamChatCompletion({
   });
 
   const upstreamStartedAt = Date.now();
-  const stream = await openRouter.chat.send({
+  const stream = await client.chat.send({
     chatRequest: {
       models: ["openai/gpt-5.4", "anthropic/claude-opus-4.6-fast"],
       messages,
@@ -69,7 +69,7 @@ export async function streamChatCompletion({
       if (isClientClosed()) break;
 
       if ("error" in chunk) {
-        throw new Error(`OpenRouter stream error: ${chunk.error.message}`);
+        throw new Error(`chat stream error: ${chunk.error.message}`);
       }
 
       const content = chunk.choices?.[0]?.delta?.content;
@@ -143,6 +143,11 @@ export async function streamChatCompletion({
       messageIndex: nextMessageIndex + 1,
     },
   ];
+  const conversationListItem = buildConversationListItem({
+    conversationId,
+    prompt,
+    assistantReply,
+  });
 
   await saveHistory(conversationId, updatedHistory);
   try {
@@ -166,6 +171,13 @@ export async function streamChatCompletion({
     });
     throw error;
   }
+
+  await onConversationEvent?.(
+    isNewConversation ? "conversation_created" : "conversation_updated",
+    {
+      conversation: conversationListItem,
+    },
+  );
 
   logger.info("chat_stream_completed", {
     requestId,

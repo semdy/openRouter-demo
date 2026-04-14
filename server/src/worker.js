@@ -1,5 +1,6 @@
 import { Worker } from "bullmq";
 import Redis from "ioredis";
+import { client } from "./chat-client.js";
 import { pool } from "./db/initDB.js";
 import { logger } from "./logger.js";
 
@@ -39,20 +40,60 @@ worker.on("failed", (job, err) => {
   });
 });
 
+async function generateConversationTitle({ userMessage, assistantMessage }) {
+  const stream = await client.chat.send({
+    chatRequest: {
+      models: ["openai/gpt-5.4-mini"],
+      messages: [
+        {
+          role: "system",
+          content: `你是一个会话标题生成器。
+
+要求：
+1. 基于用户问题和助手回答生成一个简短标题
+2. 不超过20个汉字
+3. 不要加引号、句号或多余解释
+4. 不要使用“关于”“讨论”“聊天”等空泛词
+5. 直接输出标题`,
+        },
+        {
+          role: "user",
+          content: `用户：${userMessage}\n助手：${assistantMessage}`,
+        },
+      ],
+      maxCompletionTokens: 30,
+      stream: false,
+    },
+  });
+
+  const title = stream.choices?.[0]?.message?.content?.trim();
+  return title ? title.slice(0, 40) : null;
+}
+
 async function handlePersist(data) {
   const { conversationId, messages, userId = null } = data;
   const startedAt = Date.now();
 
   const client = await pool.connect();
+  let shouldGenerateTitle = false;
+  let generatedTitleInput = null;
 
   try {
     await client.query("BEGIN");
 
-    const firstUserMessage = messages.find((message) => message.role === "user");
-    const conversationTitle = firstUserMessage?.content
-      ?.replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 80);
+    const firstUserMessage = messages.find(
+      (message) => message.role === "user",
+    );
+    const existingConversationResult = await client.query(
+      `
+        SELECT title
+        FROM conversations
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [conversationId],
+    );
+    const existingTitle = existingConversationResult.rows[0]?.title ?? null;
 
     await client.query(
       `
@@ -64,8 +105,20 @@ async function handlePersist(data) {
           updated_at = NOW(),
           last_message_at = NOW()
       `,
-      [conversationId, userId, conversationTitle || null],
+      [conversationId, userId, existingTitle],
     );
+    shouldGenerateTitle = existingTitle == null;
+    if (shouldGenerateTitle) {
+      const assistantMessage = messages.find(
+        (message) => message.role === "assistant",
+      );
+      if (firstUserMessage?.content && assistantMessage?.content) {
+        generatedTitleInput = {
+          userMessage: firstUserMessage.content,
+          assistantMessage: assistantMessage.content,
+        };
+      }
+    }
 
     const values = [];
     const params = [];
@@ -119,5 +172,30 @@ async function handlePersist(data) {
     throw err; // BullMQ 会自动 retry
   } finally {
     client.release();
+  }
+
+  if (shouldGenerateTitle && generatedTitleInput) {
+    try {
+      const generatedTitle =
+        await generateConversationTitle(generatedTitleInput);
+      if (generatedTitle) {
+        await pool.query(
+          `
+            UPDATE conversations
+            SET title = $2, updated_at = NOW()
+            WHERE id = $1 AND (title IS NULL OR title = '')
+          `,
+          [conversationId, generatedTitle],
+        );
+        logger.info("conversation_title_generated", {
+          conversationId,
+          title: generatedTitle,
+        });
+      }
+    } catch (error) {
+      logger.error("conversation_title_generation_failed", error, {
+        conversationId,
+      });
+    }
   }
 }

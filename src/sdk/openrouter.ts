@@ -8,9 +8,23 @@ export type ChatSessionOptions = {
   conversationId: string;
   onReceiveMessage?: (message: Message) => void;
   onReceiveChunk?: (chunk: string) => void;
+  onConversationCreated?: (conversation: ConversationListItem) => void;
+  onConversationUpdated?: (conversation: ConversationListItem) => void;
   onCompletionError?: (error: Error) => void;
   onCompletionDone?: () => void;
   onCompletionFinally?: () => void;
+};
+
+export type ConversationListItem = {
+  id: string;
+  userId: string | null;
+  title: string | null;
+  summary: string | null;
+  updatedAt: string;
+  lastMessageAt: string;
+  createdAt: string;
+  lastMessageRole: "assistant" | "user" | "system" | null;
+  lastMessageContent: string | null;
 };
 
 type SSEFrame = {
@@ -55,7 +69,7 @@ export class ChatSession {
   }
 
   async send(userPrompt: string) {
-    if (this.controller) this.controller.abort();
+    this.abort();
 
     this.handleReceivedMessage({ role: "user", content: userPrompt });
 
@@ -107,6 +121,10 @@ export class ChatSession {
 
           if (parsedFrame.event === "delta") {
             this.handleReceivedChunk(data.content);
+          } else if (parsedFrame.event === "conversation_created") {
+            this.options.onConversationCreated?.(data.conversation);
+          } else if (parsedFrame.event === "conversation_updated") {
+            this.options.onConversationUpdated?.(data.conversation);
           } else if (parsedFrame.event === "error") {
             throw new Error(data.message);
           } else if (parsedFrame.event === "end") {

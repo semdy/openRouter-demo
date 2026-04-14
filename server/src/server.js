@@ -2,7 +2,8 @@ import express from "express";
 import { randomUUID } from "node:crypto";
 import { initDB } from "./db/initDB.js";
 import { MAX_CONCURRENT } from "./config.js";
-import { streamChatCompletion } from "./chatService.js";
+import { listConversations } from "./services/conversationService.js";
+import { streamChatCompletion } from "./services/chatService.js";
 import { logger } from "./logger.js";
 
 const app = express();
@@ -24,6 +25,37 @@ function release() {
 function writeSSE(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
+
+app.get("/api/conversations", async (req, res) => {
+  const requestId = randomUUID();
+  const requestStartedAt = Date.now();
+  const { page: cursor, pageSize: limit } = req.query;
+
+  try {
+    const result = await listConversations({
+      cursor: typeof cursor === "string" ? cursor : undefined,
+      limit: typeof limit === "string" ? Number(limit) : undefined,
+    });
+
+    logger.info("conversation_list_fetched", {
+      requestId,
+      limit: typeof limit === "string" ? Number(limit) : undefined,
+      returnedCount: result.items.length,
+      hasNextPage: Boolean(result.nextCursor),
+      durationMs: Date.now() - requestStartedAt,
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error("conversation_list_failed", error, {
+      requestId,
+      durationMs: Date.now() - requestStartedAt,
+    });
+    res.status(400).json({
+      error: error.message,
+    });
+  }
+});
 
 app.post("/api/completions", async (req, res) => {
   const requestId = randomUUID();
@@ -88,6 +120,9 @@ app.post("/api/completions", async (req, res) => {
       continuation,
       onDelta: async (content) => {
         writeSSE(res, "delta", { content });
+      },
+      onConversationEvent: async (event, data) => {
+        writeSSE(res, event, data);
       },
       isClientClosed: () => clientClosed,
     });
