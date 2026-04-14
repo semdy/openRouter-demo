@@ -5,7 +5,7 @@ import MarkdownRender, {
   getMarkdown,
   parseMarkdownToStructure,
 } from "markstream-vue";
-import { v4 as uuidv4 } from "uuid";
+// import { v4 as uuidv4 } from "uuid";
 import { ChatSession, type Message as AIMessage } from "../sdk/openrouter";
 import "markstream-vue/index.css";
 

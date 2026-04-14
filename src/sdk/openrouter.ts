@@ -13,6 +13,35 @@ export type ChatSessionOptions = {
   onCompletionFinally?: () => void;
 };
 
+type SSEFrame = {
+  event: string;
+  data: string;
+};
+
+function parseSSEFrame(frame: string): SSEFrame | null {
+  const lines = frame.split(/\r?\n/);
+  let event = "message";
+  const dataLines: string[] = [];
+
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+
+  if (dataLines.length === 0) return null;
+
+  return {
+    event,
+    data: dataLines.join("\n"),
+  };
+}
+
 export class ChatSession {
   controller: AbortController | null = null;
   options: ChatSessionOptions = {} as ChatSessionOptions;
@@ -44,37 +73,45 @@ export class ChatSession {
       }),
     });
 
+    if (!res.ok) {
+      throw new Error(`Request failed with status ${res.status}`);
+    }
+
     const reader = res.body?.getReader();
 
     if (!reader) throw new Error("No reader");
 
     const decoder = new TextDecoder();
 
-    let buffer = "";
+    let streamBuffer = "";
 
-    this.handleReceivedMessage({ role: "assistant", content: buffer });
+    this.handleReceivedMessage({ role: "assistant", content: streamBuffer });
 
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+        streamBuffer += decoder.decode(value, { stream: true });
 
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+        const frames = streamBuffer.split(/\r?\n\r?\n/);
+        streamBuffer = frames.pop() ?? "";
 
-        for (const line of lines) {
-          if (!line.trim()) continue;
+        for (const frame of frames) {
+          if (!frame.trim()) continue;
 
-          const data = JSON.parse(line);
+          const parsedFrame = parseSSEFrame(frame);
+          if (!parsedFrame) continue;
 
-          if (data.type === "content") {
+          const data = JSON.parse(parsedFrame.data);
+
+          if (parsedFrame.event === "delta") {
             this.handleReceivedChunk(data.content);
-          } else if (data.type === "error") {
+          } else if (parsedFrame.event === "error") {
             throw new Error(data.message);
-          } else if (data.type === "end") {
-            console.log("done");
+          } else if (parsedFrame.event === "end") {
+            this.options.onCompletionDone?.();
+            return;
           }
         }
       }

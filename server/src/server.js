@@ -88,6 +88,10 @@ function trimMessagesByTokens(messages, maxTokens = 8000) {
   return result;
 }
 
+function writeSSE(res, event, data) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
 // function trimMessagesByTurns(messages) {
 //   const system = messages.find((m) => m.role === "system");
 //   const rest = messages.filter((m) => m.role !== "system");
@@ -129,8 +133,11 @@ app.post("/api/chat", async (req, res) => {
 
   const { prompt, conversationId, continuation } = req.body;
 
-  res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  res.setHeader("Transfer-Encoding", "chunked");
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-store, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders?.();
 
   let clientClosed = false;
 
@@ -198,12 +205,9 @@ app.post("/api/chat", async (req, res) => {
       if (clientClosed) break;
 
       if ("error" in chunk) {
-        res.write(
-          JSON.stringify({
-            type: "error",
-            message: chunk.error.message,
-          }) + "\n",
-        );
+        writeSSE(res, "error", {
+          message: chunk.error.message,
+        });
         break;
       }
 
@@ -218,12 +222,9 @@ app.post("/api/chat", async (req, res) => {
           lastPersist = Date.now();
         }
 
-        res.write(
-          JSON.stringify({
-            type: "content",
-            content,
-          }) + "\n",
-        );
+        writeSSE(res, "delta", {
+          content,
+        });
       }
     }
 
@@ -241,16 +242,17 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
-    res.write(JSON.stringify({ type: "end" }) + "\n");
-    res.end();
+    if (!clientClosed && !res.writableEnded) {
+      writeSSE(res, "end", {});
+      res.end();
+    }
   } catch (err) {
-    res.write(
-      JSON.stringify({
-        type: "error",
+    if (!res.writableEnded) {
+      writeSSE(res, "error", {
         message: err.message,
-      }) + "\n",
-    );
-    res.end();
+      });
+      res.end();
+    }
   } finally {
     release();
   }
