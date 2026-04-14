@@ -25,7 +25,7 @@ function writeSSE(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-app.post("/api/conversation", async (req, res) => {
+app.post("/api/completions", async (req, res) => {
   const requestId = randomUUID();
   const requestStartedAt = Date.now();
 
