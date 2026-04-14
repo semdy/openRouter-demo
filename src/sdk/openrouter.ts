@@ -32,14 +32,14 @@ export class ChatSession {
 
     this.controller = new AbortController();
 
-    const res = await fetch("http://localhost:3000/api/chat", {
+    const res = await fetch("/api/chat", {
       method: "POST",
       signal: this.controller.signal,
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        prompt,
+        prompt: userPrompt,
         conversationId: this.options.conversationId,
       }),
     });
@@ -72,18 +72,18 @@ export class ChatSession {
           if (data.type === "content") {
             this.handleReceivedChunk(data.content);
           } else if (data.type === "error") {
-            console.error(data.message);
-            this.options.onCompletionError?.(new Error(data.message));
+            throw new Error(data.message);
           } else if (data.type === "end") {
             console.log("done");
           }
         }
-        this.options.onCompletionDone?.();
       }
+      this.options.onCompletionDone?.();
     } catch (error) {
       console.error(error);
       this.options.onCompletionError?.(error as unknown as Error);
     } finally {
+      this.controller = null;
       this.options.onCompletionFinally?.();
     }
   }

@@ -23,7 +23,7 @@ const md = getMarkdown();
 let msgId = 0;
 
 const chatSession = new ChatSession({
-  conversationId: uuidv4(),
+  conversationId: "ff9700b2-a894-47c5-b88e-1dcb858e2f0c", // uuidv4(),
   onReceiveMessage(message: AIMessage) {
     buffer.value = "";
     messages.value.push({ ...message, msgId: msgId++ });

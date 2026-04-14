@@ -132,9 +132,19 @@ app.post("/api/chat", async (req, res) => {
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("Transfer-Encoding", "chunked");
 
-  let closed = false;
-  req.on("close", () => {
-    closed = true;
+  let clientClosed = false;
+
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      clientClosed = true;
+      console.log("client disconnected early");
+    } else {
+      console.log("response closed after finish");
+    }
+  });
+
+  res.on("finish", () => {
+    console.log("response finished");
   });
 
   try {
@@ -162,12 +172,17 @@ app.post("/api/chat", async (req, res) => {
     // trim (token-based)
     const messages = trimMessagesByTokens(history, 8000);
 
+    if (process.env.NODE_ENV === "development") {
+      console.log("messages:");
+      console.log(messages);
+    }
+
     // ===== call LLM =====
     const stream = await openRouter.chat.send({
       chatRequest: {
         models: ["openai/gpt-5.4", "anthropic/claude-opus-4.6-fast"],
         messages,
-        maxCompletionTokens: 2000,
+        maxCompletionTokens: 47,
         stream: true,
       },
     });
@@ -180,7 +195,7 @@ app.post("/api/chat", async (req, res) => {
     let lastPersist = Date.now();
 
     for await (const chunk of stream) {
-      if (closed) break;
+      if (clientClosed) break;
 
       if ("error" in chunk) {
         res.write(
@@ -215,7 +230,7 @@ app.post("/api/chat", async (req, res) => {
     // ===== save assistant reply =====
     await clearPartial(conversationId);
 
-    if (!closed && assistantReply) {
+    if (!clientClosed && assistantReply) {
       history.push({ role: "assistant", content: assistantReply });
       await saveHistory(conversationId, history);
 

@@ -3,4 +3,10 @@ services:
     volumes:
       - .:/app
       - /app/node_modules # 保留容器内依赖
+    env_file:
+      - .env.development
     command: npm run dev
+
+  worker:
+    env_file:
+      - .env.development
