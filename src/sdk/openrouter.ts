@@ -61,7 +61,7 @@ export class ChatSession {
 
     this.controller = new AbortController();
 
-    const res = await fetch("/api/chat", {
+    const res = await fetch("/api/conversation", {
       method: "POST",
       signal: this.controller.signal,
       headers: {

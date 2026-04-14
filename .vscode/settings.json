@@ -25,6 +25,7 @@
     "src/languages"
   ],
   "cSpell.words": [
+    "tiktoken",
     "healthcheck",
     "markstream",
     "openrouter",
