@@ -12,6 +12,7 @@ import {
   trimMessagesByTokens,
   trimMessagesByTurns,
 } from "./tokenizer.js";
+import { logger } from "./logger.js";
 
 export async function appendPartial(conversationId, partial) {
   await redis.set(
@@ -27,6 +28,7 @@ export async function clearPartial(conversationId) {
 }
 
 export async function getHistory(conversationId) {
+  const startedAt = Date.now();
   const data = await redis.get(`chat:${conversationId}`);
   let cachedHistory = [];
 
@@ -43,12 +45,20 @@ export async function getHistory(conversationId) {
       return Math.min(minIndex, message.messageIndex);
     }, Number.POSITIVE_INFINITY);
 
+  let tokenCount = 0;
+
   const needsBackfill =
     cachedHistory.length === 0 ||
     (Number.isFinite(oldestCachedMessageIndex) &&
-      countMessageTokens(cachedHistory) < MAX_PROMPT_TOKENS);
+      (tokenCount = countMessageTokens(cachedHistory)) < MAX_PROMPT_TOKENS);
 
   if (!needsBackfill) {
+    logger.info("history_cache_hit", {
+      conversationId,
+      tokenCount,
+      messageCount: cachedHistory.length,
+      durationMs: Date.now() - startedAt,
+    });
     return cachedHistory;
   }
 
@@ -72,11 +82,23 @@ export async function getHistory(conversationId) {
     );
 
     if (result.rows.length === 0) {
+      logger.info("history_empty", {
+        conversationId,
+        durationMs: Date.now() - startedAt,
+      });
       return withSystemPrompt([]);
     }
 
     const history = withSystemPrompt(result.rows);
     await saveHistory(conversationId, history);
+
+    logger.info("history_cache_miss_pg_load", {
+      conversationId,
+      tokenCount,
+      dbMessageCount: result.rows.length,
+      durationMs: Date.now() - startedAt,
+    });
+
     return history;
   }
 
@@ -93,6 +115,12 @@ export async function getHistory(conversationId) {
   );
 
   if (result.rows.length === 0) {
+    logger.info("history_backfill_skipped", {
+      conversationId,
+      tokenCount,
+      cachedMessageCount: cachedHistory.length,
+      durationMs: Date.now() - startedAt,
+    });
     return cachedHistory;
   }
 
@@ -103,6 +131,13 @@ export async function getHistory(conversationId) {
   );
 
   await saveHistory(conversationId, history);
+  logger.info("history_backfilled", {
+    conversationId,
+    cachedMessageCount: cachedHistory.length,
+    backfilledMessageCount: result.rows.length,
+    tokenCount: countMessageTokens(history),
+    durationMs: Date.now() - startedAt,
+  });
   return history;
 }
 
@@ -132,13 +167,28 @@ async function getCurrentMaxMessageIndex(conversationId) {
 export async function reserveMessageIndexes(conversationId, count) {
   const counterKey = `chat:message-index:${conversationId}`;
 
-  if (!(await redis.exists(counterKey))) {
-    const currentMax = await getCurrentMaxMessageIndex(conversationId);
-    await redis.set(counterKey, currentMax, "NX");
-  }
+  try {
+    if (!(await redis.exists(counterKey))) {
+      const currentMax = await getCurrentMaxMessageIndex(conversationId);
+      await redis.set(counterKey, currentMax, "NX");
+    }
 
-  const endIndex = await redis.incrby(counterKey, count);
-  return endIndex - count + 1;
+    const endIndex = await redis.incrby(counterKey, count);
+    const startIndex = endIndex - count + 1;
+    logger.info("history_message_indexes_reserved", {
+      conversationId,
+      count,
+      startIndex,
+      endIndex,
+    });
+    return startIndex;
+  } catch (error) {
+    logger.error("history_message_index_reserve_failed", error, {
+      conversationId,
+      count,
+    });
+    throw error;
+  }
 }
 
 export function withSystemPrompt(messages) {

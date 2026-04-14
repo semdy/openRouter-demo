@@ -1,0 +1,87 @@
+import path from "node:path";
+import fs from "node:fs";
+
+export class Logger {
+  static levels = ["fatal", "error", "warn", "info", "debug"];
+
+  constructor(logFilePath) {
+    this.logLevelIndex = Logger.levels.indexOf("info");
+
+    if (logFilePath) {
+      logFilePath = path.normalize(logFilePath);
+      this.stream = fs.createWriteStream(logFilePath, {
+        flags: "a",
+        encoding: "utf8",
+        mode: 0o666,
+      });
+    }
+  }
+
+  setLogLevel(level) {
+    const index = Logger.levels.indexOf(level);
+    if (index === -1) {
+      this.logLevelIndex = Logger.levels.indexOf("info");
+      return;
+    }
+    this.logLevelIndex = index;
+  }
+
+  format(level, event, fields) {
+    return JSON.stringify({
+      level,
+      event,
+      timestamp: new Date().toISOString(),
+      ...fields,
+    });
+  }
+
+  log(level, event, fields = {}) {
+    const levelIndex = Logger.levels.indexOf(level);
+    if (levelIndex === -1 || levelIndex > this.logLevelIndex) return;
+
+    const message = this.format(level, event, fields);
+    if (level === "error") {
+      console.error(message);
+      return;
+    }
+
+    console.log(message);
+  }
+
+  info(event, fields = {}) {
+    this.log("info", event, fields);
+  }
+
+  fatal(event, fields = {}) {
+    this.log("fatal", event, fields);
+  }
+
+  error(event, error, fields = {}) {
+    this.log("error", event, {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      ...fields,
+    });
+  }
+
+  warn(event, fields = {}) {
+    this.log("warn", event, fields);
+  }
+
+  debug(event, fields = {}) {
+    this.log("debug", event, fields);
+  }
+
+  logToFile(level, event, fields = {}) {
+    const message = this.format(level, event, fields);
+    this.stream?.write(message + "\n");
+  }
+}
+
+export function createLogger(logFilePath) {
+  return new Logger(logFilePath);
+}
+
+export const logger = new Logger();
+
+logger.setLogLevel(process.env.LOG_LEVEL || "info");

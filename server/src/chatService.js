@@ -10,6 +10,7 @@ import {
   saveHistory,
 } from "./history.js";
 import { trimMessagesByTokens } from "./tokenizer.js";
+import { logger } from "./logger.js";
 
 const openRouter = new OpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
@@ -18,10 +19,12 @@ const openRouter = new OpenRouter({
 export async function streamChatCompletion({
   prompt,
   conversationId,
+  requestId,
   continuation,
   onDelta,
   isClientClosed,
 }) {
+  const startedAt = Date.now();
   const history = await getHistory(conversationId);
   const requestHistory = [...history];
 
@@ -36,11 +39,14 @@ export async function streamChatCompletion({
 
   const messages = trimMessagesByTokens(requestHistory, MAX_PROMPT_TOKENS);
 
-  if (process.env.NODE_ENV === "development") {
-    console.log("messages:");
-    console.log(messages);
-  }
+  logger.info("chat_stream_prepared", {
+    requestId,
+    conversationId,
+    historyMessages: history.length,
+    promptMessages: messages.length,
+  });
 
+  const upstreamStartedAt = Date.now();
   const stream = await openRouter.chat.send({
     chatRequest: {
       models: ["openai/gpt-5.4", "anthropic/claude-opus-4.6-fast"],
@@ -52,6 +58,9 @@ export async function streamChatCompletion({
 
   let assistantReply = "";
   await appendPartial(conversationId, "");
+
+  let firstDeltaAt = null;
+  let deltaCount = 0;
 
   try {
     let lastPersist = Date.now();
@@ -66,7 +75,17 @@ export async function streamChatCompletion({
       const content = chunk.choices?.[0]?.delta?.content;
       if (!content) continue;
 
+      if (firstDeltaAt === null) {
+        firstDeltaAt = Date.now();
+        logger.info("chat_stream_first_delta", {
+          requestId,
+          conversationId,
+          latencyMs: firstDeltaAt - upstreamStartedAt,
+        });
+      }
+
       assistantReply += content;
+      deltaCount++;
 
       if (Date.now() - lastPersist > 200) {
         await appendPartial(conversationId, assistantReply);
@@ -80,6 +99,14 @@ export async function streamChatCompletion({
   }
 
   if (isClientClosed() || !assistantReply) {
+    logger.info("chat_stream_stopped", {
+      requestId,
+      conversationId,
+      clientClosed: isClientClosed(),
+      hasAssistantReply: Boolean(assistantReply),
+      deltaCount,
+      durationMs: Date.now() - startedAt,
+    });
     return;
   }
 
@@ -118,8 +145,33 @@ export async function streamChatCompletion({
   ];
 
   await saveHistory(conversationId, updatedHistory);
-  await chatQueue.add(QUEUE_NAME, {
+  try {
+    const job = await chatQueue.add(QUEUE_NAME, {
+      conversationId,
+      messages: persistedMessages,
+    });
+
+    logger.info("chat_persist_job_enqueued", {
+      requestId,
+      conversationId,
+      jobId: job.id,
+      deltaCount,
+      responseLength: assistantReply.length,
+      durationMs: Date.now() - startedAt,
+    });
+  } catch (error) {
+    logger.error("chat_persist_job_enqueue_failed", error, {
+      requestId,
+      conversationId,
+    });
+    throw error;
+  }
+
+  logger.info("chat_stream_completed", {
+    requestId,
     conversationId,
-    messages: persistedMessages,
+    deltaCount,
+    responseLength: assistantReply.length,
+    durationMs: Date.now() - startedAt,
   });
 }

@@ -1,6 +1,7 @@
 import { Worker } from "bullmq";
 import Redis from "ioredis";
 import { pool } from "./db/initDB.js";
+import { logger } from "./logger.js";
 
 const connection = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,
@@ -16,19 +17,31 @@ const worker = new Worker(
       await handlePersist(data);
     }
   },
-  { connection },
+  {
+    connection,
+    concurrency: 5,
+  },
 );
 
 worker.on("completed", (job) => {
-  console.log(`${job.id} has completed!`);
+  logger.info("persist_job_completed", {
+    jobId: job.id,
+    name: job.name,
+    attemptsMade: job.attemptsMade,
+  });
 });
 
 worker.on("failed", (job, err) => {
-  console.log(`${job.id} has failed with ${err.message}`);
+  logger.error("persist_job_failed", err, {
+    jobId: job?.id,
+    name: job?.name,
+    attemptsMade: job?.attemptsMade,
+  });
 });
 
 async function handlePersist(data) {
   const { conversationId, messages, userId = null } = data;
+  const startedAt = Date.now();
 
   const client = await pool.connect();
 
@@ -91,8 +104,18 @@ async function handlePersist(data) {
     );
 
     await client.query("COMMIT");
+    logger.info("persist_transaction_committed", {
+      conversationId,
+      messageCount: messages.length,
+      durationMs: Date.now() - startedAt,
+    });
   } catch (err) {
     await client.query("ROLLBACK");
+    logger.error("persist_transaction_failed", err, {
+      conversationId,
+      messageCount: messages.length,
+      durationMs: Date.now() - startedAt,
+    });
     throw err; // BullMQ 会自动 retry
   } finally {
     client.release();

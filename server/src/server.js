@@ -1,7 +1,9 @@
 import express from "express";
+import { randomUUID } from "node:crypto";
 import { initDB } from "./db/initDB.js";
 import { MAX_CONCURRENT } from "./config.js";
 import { streamChatCompletion } from "./chatService.js";
+import { logger } from "./logger.js";
 
 const app = express();
 app.use(express.json());
@@ -24,11 +26,26 @@ function writeSSE(res, event, data) {
 }
 
 app.post("/api/conversation", async (req, res) => {
+  const requestId = randomUUID();
+  const requestStartedAt = Date.now();
+
   if (!acquire()) {
+    logger.info("chat_request_rejected", {
+      requestId,
+      reason: "too_many_requests",
+      currentRequests,
+    });
     return res.status(429).json({ error: "Too many requests" });
   }
 
   const { prompt, conversationId, continuation } = req.body;
+  logger.info("chat_request_started", {
+    requestId,
+    conversationId,
+    continuation: Boolean(continuation),
+    promptLength: prompt?.length ?? 0,
+    currentRequests,
+  });
 
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-store, no-transform");
@@ -41,19 +58,32 @@ app.post("/api/conversation", async (req, res) => {
   res.on("close", () => {
     if (!res.writableEnded) {
       clientClosed = true;
-      console.log("client disconnected early");
+      logger.info("chat_request_client_closed", {
+        requestId,
+        conversationId,
+        durationMs: Date.now() - requestStartedAt,
+      });
     } else {
-      console.log("response closed after finish");
+      logger.info("chat_response_closed", {
+        requestId,
+        conversationId,
+        durationMs: Date.now() - requestStartedAt,
+      });
     }
   });
 
   res.on("finish", () => {
-    console.log("response finished");
+    logger.info("chat_response_finished", {
+      requestId,
+      conversationId,
+      durationMs: Date.now() - requestStartedAt,
+    });
   });
 
   try {
     await streamChatCompletion({
       prompt,
+      requestId,
       conversationId,
       continuation,
       onDelta: async (content) => {
@@ -67,6 +97,11 @@ app.post("/api/conversation", async (req, res) => {
       res.end();
     }
   } catch (err) {
+    logger.error("chat_request_failed", err, {
+      requestId,
+      conversationId,
+      durationMs: Date.now() - requestStartedAt,
+    });
     if (!res.writableEnded) {
       writeSSE(res, "error", {
         message: err.message,
@@ -75,6 +110,13 @@ app.post("/api/conversation", async (req, res) => {
     }
   } finally {
     release();
+    logger.info("chat_request_completed", {
+      requestId,
+      conversationId,
+      currentRequests,
+      durationMs: Date.now() - requestStartedAt,
+      clientClosed,
+    });
   }
 });
 
@@ -86,5 +128,5 @@ app.get("/health/check", (_, res) => {
 await initDB();
 
 app.listen(3000, () => {
-  console.log("Server running at http://localhost:3000");
+  logger.info("server_started", { port: 3000 });
 });
