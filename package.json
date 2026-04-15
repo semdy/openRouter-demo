@@ -13,7 +13,8 @@
     "markstream-vue": "0.0.12-beta.1",
     "stream-monaco": "^0.0.22",
     "uuid": "^13.0.0",
-    "vue": "^3.5.32"
+    "vue": "^3.5.32",
+    "vue-router": "^4.6.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",

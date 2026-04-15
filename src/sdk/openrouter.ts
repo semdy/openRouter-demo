@@ -33,6 +33,19 @@ export type ConversationListResponse = {
   nextCursor: string | null;
 };
 
+export type ConversationMessageItem = Message & {
+  conversationId: string;
+  messageIndex: number | null;
+  model: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type ConversationMessagesResponse = {
+  conversationId: string;
+  items: ConversationMessageItem[];
+};
+
 type SSEFrame = {
   event: string;
   data: string;
@@ -76,6 +89,55 @@ export async function fetchConversations(cursor?: string, pageSize = 20) {
   }
 
   return (await res.json()) as ConversationListResponse;
+}
+
+export async function fetchConversationMessages(conversationId: string) {
+  const res = await fetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to fetch conversation messages: ${res.status}`);
+  }
+
+  return (await res.json()) as ConversationMessagesResponse;
+}
+
+export async function deleteConversation(conversationId: string) {
+  const res = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to delete conversation: ${res.status}`);
+  }
+
+  return (await res.json()) as {
+    ok: boolean;
+    conversationId: string;
+    deletedMessages: number;
+  };
+}
+
+export async function updateConversationTitle(
+  conversationId: string,
+  title: string,
+) {
+  const res = await fetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to update conversation title: ${res.status}`);
+  }
+
+  return (await res.json()) as {
+    conversation: ConversationListItem;
+  };
 }
 
 export class ChatSession {

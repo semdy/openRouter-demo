@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
+import { useRoute, useRouter } from "vue-router";
 import type { ParsedNode } from "markstream-vue";
 import MarkdownRender, {
   getMarkdown,
@@ -7,8 +15,12 @@ import MarkdownRender, {
 } from "markstream-vue";
 import {
   ChatSession,
+  deleteConversation,
+  fetchConversationMessages,
   fetchConversations,
+  updateConversationTitle,
   type ConversationListItem,
+  type ConversationMessageItem,
   type Message,
 } from "@/sdk/openrouter";
 import { v4 as uuid } from "uuid";
@@ -18,16 +30,39 @@ type MessageWithNodes = Message & {
   nodes?: ParsedNode[];
 };
 
+const route = useRoute();
+const router = useRouter();
 const md = getMarkdown();
+
 const messagesByConversation = ref<Record<string, MessageWithNodes[]>>({});
 const conversations = ref<ConversationListItem[]>([]);
 const conversationsLoading = ref(false);
 const conversationsError = ref("");
+const messageLoading = ref(false);
 const nextCursor = ref<string | null>(null);
 const loadingMore = ref(false);
+const deletingConversationId = ref<string | null>(null);
+const editingConversationId = ref<string | null>(null);
+const editingTitleValue = ref("");
+const editingOriginalTitleValue = ref("");
+const savingTitleConversationId = ref<string | null>(null);
 const input = ref("");
 const loading = ref(false);
-const activeConversationId = ref<string>(uuid());
+const draftConversationId = ref(uuid());
+
+const routeConversationId = computed(() => {
+  const raw = route.params.conversationId;
+  if (typeof raw !== "string") {
+    return null;
+  }
+
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+});
+
+const activeConversationId = computed(() => {
+  return routeConversationId.value ?? draftConversationId.value;
+});
 
 let chatSession = createChatSession(activeConversationId.value);
 let conversationEventSource: EventSource | null = null;
@@ -48,6 +83,22 @@ function ensureConversationMessages(conversationId: string) {
   }
 
   return messagesByConversation.value[conversationId];
+}
+
+function toMessageWithNodes(
+  message: ConversationMessageItem,
+): MessageWithNodes {
+  const normalized: MessageWithNodes = {
+    role: message.role,
+    content: message.content,
+    messageId: message.messageId,
+  };
+
+  if (normalized.role === "assistant") {
+    normalized.nodes = parseMarkdownToStructure(normalized.content, md);
+  }
+
+  return normalized;
 }
 
 function createChatSession(conversationId: string) {
@@ -77,6 +128,12 @@ function createChatSession(conversationId: string) {
       loading.value = false;
     },
   });
+}
+
+function resetChatSession(conversationId: string) {
+  chatSession.abort();
+  chatSession = createChatSession(conversationId);
+  loading.value = false;
 }
 
 function previewConversation(conversation: ConversationListItem) {
@@ -179,23 +236,123 @@ async function loadConversations(loadMore = false) {
   }
 }
 
-function startNewConversation() {
-  chatSession.abort();
-  activeConversationId.value = uuid();
-  chatSession = createChatSession(activeConversationId.value);
-  ensureConversationMessages(activeConversationId.value);
-  input.value = "";
-  loading.value = false;
+async function loadConversationMessages(conversationId: string) {
+  messageLoading.value = true;
+  conversationsError.value = "";
+  try {
+    const result = await fetchConversationMessages(conversationId);
+    messagesByConversation.value[conversationId] =
+      result.items.map(toMessageWithNodes);
+  } catch (error) {
+    conversationsError.value =
+      error instanceof Error
+        ? error.message
+        : "Failed to load conversation messages";
+  } finally {
+    messageLoading.value = false;
+  }
 }
 
-function selectConversation(conversationId: string) {
-  if (conversationId === activeConversationId.value) return;
+async function startNewConversation() {
+  input.value = "";
+  draftConversationId.value = uuid();
+  if (routeConversationId.value !== null) {
+    await router.push("/");
+    return;
+  }
 
-  chatSession.abort();
-  activeConversationId.value = conversationId;
-  chatSession = createChatSession(conversationId);
-  ensureConversationMessages(conversationId);
-  loading.value = false;
+  ensureConversationMessages(draftConversationId.value);
+  resetChatSession(draftConversationId.value);
+}
+
+async function selectConversation(conversationId: string) {
+  if (conversationId === routeConversationId.value) return;
+  await router.push(`/${conversationId}`);
+}
+
+async function removeConversation(conversationId: string) {
+  if (deletingConversationId.value) {
+    return;
+  }
+
+  deletingConversationId.value = conversationId;
+  conversationsError.value = "";
+  try {
+    await deleteConversation(conversationId);
+    conversations.value = conversations.value.filter(
+      (conversation) => conversation.id !== conversationId,
+    );
+    delete messagesByConversation.value[conversationId];
+
+    if (routeConversationId.value === conversationId) {
+      draftConversationId.value = uuid();
+      await router.push("/");
+    }
+  } catch (error) {
+    conversationsError.value =
+      error instanceof Error ? error.message : "Failed to delete conversation";
+  } finally {
+    deletingConversationId.value = null;
+  }
+}
+
+function startEditConversationTitle(conversation: ConversationListItem) {
+  editingConversationId.value = conversation.id;
+  editingOriginalTitleValue.value = previewConversation(conversation);
+  editingTitleValue.value = editingOriginalTitleValue.value;
+  nextTick(() => {
+    const inputElement = document.getElementById(
+      `conversation-title-input-${conversation.id}`,
+    ) as HTMLInputElement | null;
+    inputElement?.focus();
+    inputElement?.select();
+  });
+}
+
+function cancelEditConversationTitle() {
+  editingConversationId.value = null;
+  editingTitleValue.value = "";
+  editingOriginalTitleValue.value = "";
+}
+
+async function submitEditConversationTitle(conversationId: string) {
+  if (savingTitleConversationId.value) {
+    return;
+  }
+
+  const conversation = conversations.value.find(
+    (item) => item.id === conversationId,
+  );
+  if (!conversation) {
+    cancelEditConversationTitle();
+    return;
+  }
+
+  const nextTitle = editingTitleValue.value.trim();
+  if (!nextTitle) {
+    cancelEditConversationTitle();
+    return;
+  }
+
+  if (nextTitle === editingOriginalTitleValue.value) {
+    cancelEditConversationTitle();
+    return;
+  }
+
+  savingTitleConversationId.value = conversationId;
+  conversationsError.value = "";
+  try {
+    const result = await updateConversationTitle(conversationId, nextTitle);
+    upsertConversation(result.conversation, false);
+    cancelEditConversationTitle();
+  } catch (error) {
+    conversationsError.value =
+      error instanceof Error
+        ? error.message
+        : "Failed to update conversation title";
+  } finally {
+    savingTitleConversationId.value = null;
+  }
 }
 
 async function send() {
@@ -207,8 +364,20 @@ async function send() {
   await chatSession.send(msg);
 }
 
+watch(
+  activeConversationId,
+  async (conversationId) => {
+    ensureConversationMessages(conversationId);
+    resetChatSession(conversationId);
+    if (routeConversationId.value) {
+      await loadConversationMessages(conversationId);
+      return;
+    }
+  },
+  { immediate: true },
+);
+
 await loadConversations();
-ensureConversationMessages(activeConversationId.value);
 
 onMounted(() => {
   startConversationStream();
@@ -244,26 +413,59 @@ onBeforeUnmount(() => {
         Loading conversations...
       </p>
       <div v-else class="conversation-list">
-        <button
+        <div
           v-for="conversation in conversations"
           :key="conversation.id"
-          type="button"
-          class="conversation-item"
+          class="conversation-item-wrapper"
           :class="{ active: conversation.id === activeConversationId }"
-          @click="selectConversation(conversation.id)"
         >
-          <div class="conversation-item-header">
-            <span class="conversation-title">
-              {{ previewConversation(conversation) }}
-            </span>
-            <span class="conversation-time">
-              {{ formatTime(conversation.lastMessageAt) }}
-            </span>
-          </div>
-          <p class="conversation-preview">
-            {{ conversation.lastMessageContent || "No messages yet" }}
-          </p>
-        </button>
+          <button
+            type="button"
+            class="conversation-item"
+            :class="{ active: conversation.id === activeConversationId }"
+            @click="selectConversation(conversation.id)"
+          >
+            <div class="conversation-item-header">
+              <span
+                v-if="editingConversationId !== conversation.id"
+                class="conversation-title"
+                @dblclick.stop.prevent="
+                  startEditConversationTitle(conversation)
+                "
+              >
+                {{ previewConversation(conversation) }}
+              </span>
+              <input
+                v-else
+                :id="`conversation-title-input-${conversation.id}`"
+                v-model="editingTitleValue"
+                class="conversation-title-input"
+                type="text"
+                :disabled="savingTitleConversationId === conversation.id"
+                @click.stop
+                @keydown.enter.prevent="
+                  submitEditConversationTitle(conversation.id)
+                "
+                @keydown.esc.prevent="cancelEditConversationTitle"
+                @blur="submitEditConversationTitle(conversation.id)"
+              />
+              <span class="conversation-time">
+                {{ formatTime(conversation.lastMessageAt) }}
+              </span>
+            </div>
+            <p class="conversation-preview">
+              {{ conversation.lastMessageContent || "No messages yet" }}
+            </p>
+          </button>
+          <button
+            type="button"
+            class="conversation-delete-button"
+            :disabled="deletingConversationId === conversation.id"
+            @click.stop="removeConversation(conversation.id)"
+          >
+            X
+          </button>
+        </div>
 
         <button
           v-if="nextCursor"
@@ -286,6 +488,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="chat-messages">
+        <div v-if="messageLoading" class="panel-state">Loading messages...</div>
         <div v-if="currentMessages.length === 0" class="empty-state">
           <h3>Start a new conversation</h3>
           <p>Ask a question and the chat list will update automatically.</p>
@@ -405,6 +608,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  width: 100%;
   padding: 14px;
   border: 1px solid rgba(35, 52, 53, 0.08);
   border-radius: 18px;
@@ -423,6 +627,40 @@ onBeforeUnmount(() => {
   box-shadow: 0 14px 30px rgba(15, 118, 110, 0.08);
 }
 
+.conversation-item-wrapper {
+  position: relative;
+}
+
+.conversation-delete-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(185, 28, 28, 0.12);
+  color: #991b1b;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.conversation-item-wrapper:hover .conversation-delete-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.conversation-delete-button:hover {
+  transform: scale(1.05);
+  background: rgba(185, 28, 28, 0.2);
+}
+
 .conversation-item-header {
   display: flex;
   align-items: flex-start;
@@ -433,6 +671,18 @@ onBeforeUnmount(() => {
 .conversation-title {
   font-weight: 700;
   color: #123533;
+  cursor: text;
+}
+
+.conversation-title-input {
+  width: 100%;
+  min-width: 0;
+  font-weight: 700;
+  color: #123533;
+  border: 1px solid rgba(15, 118, 110, 0.35);
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .conversation-time {
