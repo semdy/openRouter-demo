@@ -4,7 +4,7 @@ import { initDB } from "./db/initDB.js";
 import {
   getConversationMessages,
   getConversations,
-  getConversationsStream,
+  updateConversationStream,
   deleteConversation,
   updateConversation,
 } from "./handlers/conversations.js";
@@ -17,7 +17,7 @@ app.use(cors);
 app.use(express.json());
 
 app.get("/api/conversations", getConversations);
-app.get("/api/conversations/stream", getConversationsStream);
+app.get("/api/conversations/stream", updateConversationStream);
 app.patch("/api/conversations/:conversationId", updateConversation);
 app.delete("/api/conversations/:conversationId", deleteConversation);
 app.get(

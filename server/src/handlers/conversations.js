@@ -181,7 +181,7 @@ conversationSubscriber.on("message", (channel, payload) => {
   }
 });
 
-export async function getConversationsStream(req, res) {
+export async function updateConversationStream(req, res) {
   const requestId = randomUUID();
 
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
