@@ -137,9 +137,7 @@ function resetChatSession(conversationId: string) {
 }
 
 function previewConversation(conversation: ConversationListItem) {
-  return (
-    conversation.title || conversation.lastMessageContent || "New conversation"
-  );
+  return conversation.title || conversation.lastMessageContent || "新聊天";
 }
 
 function formatTime(value: string) {
@@ -229,7 +227,7 @@ async function loadConversations(loadMore = false) {
     }
   } catch (error) {
     conversationsError.value =
-      error instanceof Error ? error.message : "Failed to load conversations";
+      error instanceof Error ? error.message : "聊天记录加载失败";
   } finally {
     conversationsLoading.value = false;
     loadingMore.value = false;
@@ -245,9 +243,7 @@ async function loadConversationMessages(conversationId: string) {
       result.items.map(toMessageWithNodes);
   } catch (error) {
     conversationsError.value =
-      error instanceof Error
-        ? error.message
-        : "Failed to load conversation messages";
+      error instanceof Error ? error.message : "聊天消息加载失败";
   } finally {
     messageLoading.value = false;
   }
@@ -290,7 +286,7 @@ async function removeConversation(conversationId: string) {
     }
   } catch (error) {
     conversationsError.value =
-      error instanceof Error ? error.message : "Failed to delete conversation";
+      error instanceof Error ? error.message : "聊天删除失败";
   } finally {
     deletingConversationId.value = null;
   }
@@ -347,9 +343,7 @@ async function submitEditConversationTitle(conversationId: string) {
     cancelEditConversationTitle();
   } catch (error) {
     conversationsError.value =
-      error instanceof Error
-        ? error.message
-        : "Failed to update conversation title";
+      error instanceof Error ? error.message : "聊天标题更新失败";
   } finally {
     savingTitleConversationId.value = null;
   }
@@ -394,23 +388,23 @@ onBeforeUnmount(() => {
     <aside class="conversation-panel">
       <div class="panel-header">
         <div>
-          <p class="eyebrow">Conversations</p>
-          <h2>Recent chats</h2>
+          <p class="eyebrow">聊天</p>
+          <h2>最近聊天</h2>
         </div>
         <button
           class="new-chat-button"
           type="button"
           @click="startNewConversation"
         >
-          New Chat
+          新聊天
         </button>
       </div>
 
       <p v-if="conversationsError" class="panel-state error">
         {{ conversationsError }}
       </p>
-      <p v-else-if="conversationsLoading" class="panel-state">
-        Loading conversations...
+      <p v-else-if="conversationsLoading" class="panel-state loading">
+        聊天记录加载中...
       </p>
       <div v-else class="conversation-list">
         <div
@@ -454,7 +448,7 @@ onBeforeUnmount(() => {
               </span>
             </div>
             <p class="conversation-preview">
-              {{ conversation.lastMessageContent || "No messages yet" }}
+              {{ conversation.lastMessageContent || "暂无消息内容" }}
             </p>
           </button>
           <button
@@ -474,7 +468,7 @@ onBeforeUnmount(() => {
           :disabled="loadingMore"
           @click="loadConversations(true)"
         >
-          {{ loadingMore ? "Loading..." : "Load More" }}
+          {{ loadingMore ? "加载中..." : "加载更多" }}
         </button>
       </div>
     </aside>
@@ -482,16 +476,16 @@ onBeforeUnmount(() => {
     <section class="chat-panel">
       <div class="chat-header">
         <div>
-          <p class="eyebrow">Active conversation</p>
-          <h1>{{ activeConversation?.title || "New conversation" }}</h1>
+          <p class="eyebrow">当前聊天</p>
+          <h1>{{ activeConversation?.title || "新聊天" }}</h1>
         </div>
       </div>
 
       <div class="chat-messages">
-        <div v-if="messageLoading" class="panel-state">Loading messages...</div>
+        <div v-if="messageLoading" class="panel-state loading">加载中...</div>
         <div v-if="currentMessages.length === 0" class="empty-state">
-          <h3>Start a new conversation</h3>
-          <p>Ask a question and the chat list will update automatically.</p>
+          <h3>开始新聊天</h3>
+          <p>提问后，聊天列表会自动更新。</p>
         </div>
 
         <div v-else class="chat-render">
@@ -511,9 +505,9 @@ onBeforeUnmount(() => {
 
       <div class="chat-input">
         <form @submit.prevent="send">
-          <input v-model="input" type="text" placeholder="Ask anything..." />
+          <input v-model="input" type="text" placeholder="有问题，尽管问" />
           <button type="submit" :disabled="loading">
-            {{ loading ? "Thinking..." : "Send" }}
+            {{ loading ? "思考中..." : "发送" }}
           </button>
         </form>
       </div>
@@ -574,7 +568,7 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, #134e4a, #0f766e);
   color: #f7f5ef;
   cursor: pointer;
-  font-weight: 700;
+  font-weight: bold;
 }
 
 .new-chat-button,
@@ -593,6 +587,13 @@ onBeforeUnmount(() => {
 .panel-state.error {
   background: rgba(191, 54, 12, 0.1);
   color: #9a3412;
+}
+
+.chat-messages .panel-state.loading {
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  top: 0;
 }
 
 .conversation-list {
@@ -706,6 +707,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .chat-header {
@@ -713,6 +716,7 @@ onBeforeUnmount(() => {
 }
 
 .chat-messages {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -769,7 +773,7 @@ onBeforeUnmount(() => {
 }
 
 .chat-input {
-  padding: 18px 28px 28px;
+  padding: 18px 28px 18px;
 }
 
 .chat-input form {
