@@ -6,12 +6,12 @@ import {
   CONVERSATION_UPDATES_CHANNEL,
   deleteConversationCascade,
   getConversationListItem,
-  getConversationMessages,
+  getConversationMessages as getConversationMessagesService,
   listConversations,
   updateConversationTitle,
 } from "../services/conversations.js";
 
-export async function getConversationsHandler(req, res) {
+export async function getConversations(req, res) {
   const requestId = randomUUID();
   const requestStartedAt = Date.now();
   const { cursor, pageSize } = req.query;
@@ -51,7 +51,7 @@ function getConversationIdParam(req) {
   return conversationId;
 }
 
-export async function updateConversationHandler(req, res) {
+export async function updateConversation(req, res) {
   const requestId = randomUUID();
   const requestStartedAt = Date.now();
   const conversationId = getConversationIdParam(req);
@@ -91,7 +91,7 @@ export async function updateConversationHandler(req, res) {
   }
 }
 
-export async function deleteConversationHandler(req, res) {
+export async function deleteConversation(req, res) {
   const requestId = randomUUID();
   const requestStartedAt = Date.now();
   const conversationId = getConversationIdParam(req);
@@ -129,7 +129,7 @@ export async function deleteConversationHandler(req, res) {
   }
 }
 
-export async function getConversationMessagesHandler(req, res) {
+export async function getConversationMessages(req, res) {
   const requestId = randomUUID();
   const requestStartedAt = Date.now();
   const conversationId = getConversationIdParam(req);
@@ -144,7 +144,7 @@ export async function getConversationMessagesHandler(req, res) {
       return res.status(404).json({ error: "Conversation not found" });
     }
 
-    const items = await getConversationMessages(conversationId);
+    const items = await getConversationMessagesService(conversationId);
 
     logger.info("conversation_messages_fetched", {
       requestId,
@@ -181,7 +181,7 @@ conversationSubscriber.on("message", (channel, payload) => {
   }
 });
 
-export async function getConversationsStreamHandler(req, res) {
+export async function getConversationsStream(req, res) {
   const requestId = randomUUID();
 
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");

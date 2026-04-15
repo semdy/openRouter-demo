@@ -2,69 +2,30 @@ import express from "express";
 import { logger } from "./logger.js";
 import { initDB } from "./db/initDB.js";
 import {
-  getConversationMessagesHandler,
-  getConversationsHandler,
-  getConversationsStreamHandler,
-  deleteConversationHandler,
-  updateConversationHandler,
+  getConversationMessages,
+  getConversations,
+  getConversationsStream,
+  deleteConversation,
+  updateConversation,
 } from "./handlers/conversations.js";
-import { completionsHandler } from "./handlers/completions.js";
+import { completions } from "./handlers/completions.js";
+import { cors } from "./middlewares/cors.js";
 
 const app = express();
-const corsOriginsRaw = process.env.CORS_ORIGINS ?? process.env.CORS_ORIGIN ?? "*";
-const allowedCorsOrigins = corsOriginsRaw
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-const corsAllowMethods =
-  process.env.CORS_ALLOW_METHODS ?? "GET,POST,PATCH,DELETE,OPTIONS";
-const corsAllowHeaders =
-  process.env.CORS_ALLOW_HEADERS ?? "Content-Type,Authorization";
-const corsAllowCredentials = process.env.CORS_ALLOW_CREDENTIALS === "true";
 
-app.use((req, res, next) => {
-  const requestOrigin = req.headers.origin;
-  const allowAllOrigins =
-    allowedCorsOrigins.length === 0 || allowedCorsOrigins.includes("*");
-  const originAllowed =
-    allowAllOrigins ||
-    (typeof requestOrigin === "string" &&
-      allowedCorsOrigins.includes(requestOrigin));
-
-  if (originAllowed) {
-    if (allowAllOrigins) {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-    } else if (requestOrigin) {
-      res.setHeader("Access-Control-Allow-Origin", requestOrigin);
-      res.setHeader("Vary", "Origin");
-    }
-  }
-
-  if (corsAllowCredentials && !allowAllOrigins && originAllowed) {
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-  }
-
-  res.setHeader("Access-Control-Allow-Methods", corsAllowMethods);
-  res.setHeader("Access-Control-Allow-Headers", corsAllowHeaders);
-
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
-  }
-
-  return next();
-});
+app.use(cors);
 app.use(express.json());
 
-app.get("/api/conversations", getConversationsHandler);
-app.get("/api/conversations/stream", getConversationsStreamHandler);
-app.patch("/api/conversations/:conversationId", updateConversationHandler);
-app.delete("/api/conversations/:conversationId", deleteConversationHandler);
+app.get("/api/conversations", getConversations);
+app.get("/api/conversations/stream", getConversationsStream);
+app.patch("/api/conversations/:conversationId", updateConversation);
+app.delete("/api/conversations/:conversationId", deleteConversation);
 app.get(
   "/api/conversations/:conversationId/messages",
-  getConversationMessagesHandler,
+  getConversationMessages,
 );
 
-app.post("/api/completions", completionsHandler);
+app.post("/api/completions", completions);
 
 app.get("/health/check", (_, res) => {
   res.send("ok");

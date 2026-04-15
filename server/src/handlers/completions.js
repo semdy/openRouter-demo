@@ -17,7 +17,7 @@ function release() {
   currentRequests--;
 }
 
-export async function completionsHandler(req, res) {
+export async function completions(req, res) {
   const requestId = randomUUID();
   const requestStartedAt = Date.now();
 
