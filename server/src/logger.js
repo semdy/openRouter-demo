@@ -21,6 +21,7 @@ export class Logger {
     const index = Logger.levels.indexOf(level);
     if (index === -1) {
       this.logLevelIndex = Logger.levels.indexOf("info");
+      console.warn(`Invalid log level: ${level}, falling back to "info"`);
       return;
     }
     this.logLevelIndex = index;
@@ -84,4 +85,6 @@ export function createLogger(logFilePath) {
 
 export const logger = new Logger();
 
-logger.setLogLevel(process.env.LOG_LEVEL || "info");
+if (process.env.LOG_LEVEL) {
+  logger.setLogLevel(process.env.LOG_LEVEL);
+}

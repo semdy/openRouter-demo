@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type { ParsedNode } from "markstream-vue";
 import MarkdownRender, {
   getMarkdown,
@@ -28,9 +28,9 @@ const loadingMore = ref(false);
 const input = ref("");
 const loading = ref(false);
 const activeConversationId = ref<string>(uuid());
-let refreshTimer: number | null = null;
 
 let chatSession = createChatSession(activeConversationId.value);
+let conversationEventSource: EventSource | null = null;
 
 const currentMessages = computed(() => {
   return messagesByConversation.value[activeConversationId.value] ?? [];
@@ -69,14 +69,6 @@ function createChatSession(conversationId: string) {
         lastAssistantMsg.content,
         md,
       );
-    },
-    onConversationCreated(conversation) {
-      upsertConversation(conversation, true);
-      scheduleConversationRefresh();
-    },
-    onConversationUpdated(conversation) {
-      upsertConversation(conversation, true);
-      scheduleConversationRefresh();
     },
     onCompletionError(error) {
       console.error(error);
@@ -132,38 +124,26 @@ function upsertConversation(
   conversations.value = updated;
 }
 
-function scheduleConversationRefresh(delay = 1500) {
-  if (refreshTimer !== null) {
-    window.clearTimeout(refreshTimer);
-  }
+function startConversationStream() {
+  conversationEventSource?.close();
+  conversationEventSource = new EventSource("/api/conversations/stream");
 
-  refreshTimer = window.setTimeout(async () => {
-    refreshTimer = null;
+  conversationEventSource.addEventListener("conversation_updated", (event) => {
+    const messageEvent = event as MessageEvent<string>;
+    const data = JSON.parse(messageEvent.data) as {
+      conversation: ConversationListItem;
+    };
 
-    try {
-      const result = await fetchConversations();
-      const existingById = new Map(
-        conversations.value.map((conversation) => [
-          conversation.id,
-          conversation,
-        ]),
-      );
-      const merged = result.items.map((conversation) => ({
-        ...existingById.get(conversation.id),
-        ...conversation,
-      }));
-      const mergedIds = new Set(merged.map((conversation) => conversation.id));
-      conversations.value = [
-        ...merged,
-        ...conversations.value.filter(
-          (conversation) => !mergedIds.has(conversation.id),
-        ),
-      ];
-      nextCursor.value = result.nextCursor;
-    } catch (error) {
-      console.error(error);
-    }
-  }, delay);
+    upsertConversation(data.conversation, true);
+  });
+
+  conversationEventSource.onerror = () => {
+    conversationEventSource?.close();
+    conversationEventSource = null;
+    window.setTimeout(() => {
+      startConversationStream();
+    }, 2000);
+  };
 }
 
 async function loadConversations(loadMore = false) {
@@ -229,6 +209,15 @@ async function send() {
 
 await loadConversations();
 ensureConversationMessages(activeConversationId.value);
+
+onMounted(() => {
+  startConversationStream();
+});
+
+onBeforeUnmount(() => {
+  chatSession.abort();
+  conversationEventSource?.close();
+});
 </script>
 
 <template>

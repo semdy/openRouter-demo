@@ -11,8 +11,6 @@ export type ChatSessionOptions = {
   conversationId: string;
   onReceiveMessage?: (message: Message) => void;
   onReceiveChunk?: (chunk: string) => void;
-  onConversationCreated?: (conversation: ConversationListItem) => void;
-  onConversationUpdated?: (conversation: ConversationListItem) => void;
   onCompletionError?: (error: Error) => void;
   onCompletionDone?: () => void;
   onCompletionFinally?: () => void;
@@ -64,11 +62,11 @@ function parseSSEFrame(frame: string): SSEFrame | null {
   };
 }
 
-export async function fetchConversations(cursor?: string, limit = 20) {
+export async function fetchConversations(cursor?: string, pageSize = 20) {
   const params = new URLSearchParams();
-  params.set("pageSize", String(limit));
+  params.set("pageSize", String(pageSize));
   if (cursor) {
-    params.set("page", cursor);
+    params.set("cursor", cursor);
   }
 
   const query = params.toString();
@@ -153,11 +151,8 @@ export class ChatSession {
 
           if (parsedFrame.event === "delta") {
             this.handleReceivedChunk(data.content);
-          } else if (parsedFrame.event === "conversation_created") {
-            this.options.onConversationCreated?.(data.conversation);
-          } else if (parsedFrame.event === "conversation_updated") {
-            this.options.onConversationUpdated?.(data.conversation);
           } else if (parsedFrame.event === "error") {
+            this.handleReceivedChunk(data.message);
             throw new Error(data.message);
           } else if (parsedFrame.event === "end") {
             this.options.onCompletionDone?.();
@@ -167,7 +162,6 @@ export class ChatSession {
       }
       this.options.onCompletionDone?.();
     } catch (error) {
-      console.error(error);
       this.options.onCompletionError?.(error as unknown as Error);
     } finally {
       this.controller = null;

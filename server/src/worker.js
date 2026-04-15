@@ -3,10 +3,15 @@ import Redis from "ioredis";
 import { client } from "./chat-client.js";
 import { pool } from "./db/initDB.js";
 import { logger } from "./logger.js";
+import {
+  CONVERSATION_UPDATES_CHANNEL,
+  getConversationListItem,
+} from "./services/conversationService.js";
 
 const connection = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,
 });
+const publisher = new Redis(process.env.REDIS_URL);
 
 export const WORKER_NAME = "chat-persist";
 
@@ -84,10 +89,6 @@ async function handlePersist(data) {
     const firstUserMessage = messages.find(
       (message) => message.role === "user",
     );
-    const conversationTitle = firstUserMessage?.content
-      ?.replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 80);
     const existingConversationResult = await client.query(
       `
         SELECT title
@@ -109,9 +110,11 @@ async function handlePersist(data) {
           updated_at = NOW(),
           last_message_at = NOW()
       `,
-      [conversationId, userId, existingTitle || conversationTitle],
+      [conversationId, userId, existingTitle],
     );
+
     shouldGenerateTitle = existingTitle == null;
+
     if (shouldGenerateTitle) {
       const assistantMessage = messages.find(
         (message) => message.role === "assistant",
@@ -161,6 +164,7 @@ async function handlePersist(data) {
     );
 
     await client.query("COMMIT");
+
     logger.info("persist_transaction_committed", {
       conversationId,
       messageCount: messages.length,
@@ -191,6 +195,13 @@ async function handlePersist(data) {
           `,
           [conversationId, generatedTitle],
         );
+        const conversation = await getConversationListItem(conversationId);
+        if (conversation) {
+          await publisher.publish(
+            CONVERSATION_UPDATES_CHANNEL,
+            JSON.stringify({ conversation }),
+          );
+        }
         logger.info("conversation_title_generated", {
           conversationId,
           title: generatedTitle,

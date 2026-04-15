@@ -1,27 +1,7 @@
 import { Buffer } from "node:buffer";
 import { pool } from "../db/initDB.js";
 
-export function buildConversationListItem({
-  conversationId,
-  userId = null,
-  prompt,
-  assistantReply,
-  timestamp = new Date().toISOString(),
-}) {
-  const title = prompt?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
-
-  return {
-    id: conversationId,
-    userId,
-    title,
-    summary: null,
-    updatedAt: timestamp,
-    lastMessageAt: timestamp,
-    createdAt: timestamp,
-    lastMessageRole: "assistant",
-    lastMessageContent: assistantReply,
-  };
-}
+export const CONVERSATION_UPDATES_CHANNEL = "conversation-updates";
 
 function encodeCursor(lastMessageAt, id) {
   return Buffer.from(
@@ -43,8 +23,52 @@ function decodeCursor(cursor) {
   return decoded;
 }
 
-export async function listConversations({ cursor, limit = 20 }) {
-  const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
+function mapConversationRow(row) {
+  return {
+    id: row.id,
+    userId: row.userId,
+    title: row.title,
+    summary: row.summary,
+    updatedAt: row.updatedAt,
+    lastMessageAt: row.lastMessageAt,
+    createdAt: row.createdAt,
+    lastMessageRole: row.lastMessageRole,
+    lastMessageContent: row.lastMessageContent,
+  };
+}
+
+export async function getConversationListItem(conversationId) {
+  const result = await pool.query(
+    `
+      SELECT
+        c.id,
+        c.user_id AS "userId",
+        c.title,
+        c.summary,
+        c.updated_at AS "updatedAt",
+        c.last_message_at AS "lastMessageAt",
+        c.created_at AS "createdAt",
+        m.role AS "lastMessageRole",
+        m.content AS "lastMessageContent"
+      FROM conversations c
+      LEFT JOIN LATERAL (
+        SELECT role, content
+        FROM messages
+        WHERE conversation_id = c.id
+        ORDER BY message_index DESC NULLS LAST, created_at DESC, id DESC
+        LIMIT 1
+      ) m ON TRUE
+      WHERE c.id = $1
+      LIMIT 1
+    `,
+    [conversationId],
+  );
+
+  return result.rows[0] ? mapConversationRow(result.rows[0]) : null;
+}
+
+export async function listConversations({ cursor, pageSize = 20 }) {
+  pageSize = Math.min(Math.max(Number(pageSize) || 20, 1), 100);
   const decodedCursor = decodeCursor(cursor);
   const params = [pageSize + 1];
 
@@ -88,7 +112,7 @@ export async function listConversations({ cursor, limit = 20 }) {
   const lastItem = items.at(-1);
 
   return {
-    items,
+    items: items.map(mapConversationRow),
     nextCursor:
       hasMore && lastItem
         ? encodeCursor(lastItem.lastMessageAt, lastItem.id)

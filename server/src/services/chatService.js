@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { client } from "../chat-client.js";
 import { chatQueue, QUEUE_NAME } from "../queue.js";
 import { CONTINUE_PROMPT, MAX_PROMPT_TOKENS } from "../config.js";
-import { buildConversationListItem } from "./conversationService.js";
 import {
   appendPartial,
   clearPartial,
@@ -19,13 +18,10 @@ export async function streamChatCompletion({
   requestId,
   continuation,
   onDelta,
-  onConversationEvent,
   isClientClosed,
 }) {
   const startedAt = Date.now();
   const history = await getHistory(conversationId);
-  const isNewConversation =
-    history.filter((message) => message.role !== "system").length === 0;
   const requestHistory = [...history];
 
   if (continuation) {
@@ -143,11 +139,6 @@ export async function streamChatCompletion({
       messageIndex: nextMessageIndex + 1,
     },
   ];
-  const conversationListItem = buildConversationListItem({
-    conversationId,
-    prompt,
-    assistantReply,
-  });
 
   await saveHistory(conversationId, updatedHistory);
   try {
@@ -171,13 +162,6 @@ export async function streamChatCompletion({
     });
     throw error;
   }
-
-  await onConversationEvent?.(
-    isNewConversation ? "conversation_created" : "conversation_updated",
-    {
-      conversation: conversationListItem,
-    },
-  );
 
   logger.info("chat_stream_completed", {
     requestId,
