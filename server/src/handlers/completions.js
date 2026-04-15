@@ -31,6 +31,7 @@ export async function completions(req, res) {
   }
 
   const { prompt, conversationId, continuation } = req.body;
+
   logger.info("chat_request_started", {
     requestId,
     conversationId,
