@@ -2,8 +2,11 @@ import express from "express";
 import { logger } from "./logger.js";
 import { initDB } from "./db/initDB.js";
 import {
+  conversationMessagesHandler,
   conversationsHandler,
   conversationsStreamHandler,
+  deleteConversationHandler,
+  updateConversationHandler,
 } from "./handlers/conversations.js";
 import { completionsHandler } from "./handlers/completions.js";
 
@@ -12,6 +15,12 @@ app.use(express.json());
 
 app.get("/api/conversations", conversationsHandler);
 app.get("/api/conversations/stream", conversationsStreamHandler);
+app.patch("/api/conversations/:conversationId", updateConversationHandler);
+app.delete("/api/conversations/:conversationId", deleteConversationHandler);
+app.get(
+  "/api/conversations/:conversationId/messages",
+  conversationMessagesHandler,
+);
 
 app.post("/api/completions", completionsHandler);
 

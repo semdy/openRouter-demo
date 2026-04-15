@@ -1,5 +1,6 @@
 import { Worker } from "bullmq";
 import Redis from "ioredis";
+import { redis } from "./redis.js";
 import { client } from "./chat-client.js";
 import { pool } from "./db/initDB.js";
 import { logger } from "./logger.js";
@@ -11,7 +12,6 @@ import {
 const connection = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,
 });
-const publisher = new Redis(process.env.REDIS_URL);
 
 export const WORKER_NAME = "chat-persist";
 
@@ -197,7 +197,7 @@ async function handlePersist(data) {
         );
         const conversation = await getConversationListItem(conversationId);
         if (conversation) {
-          await publisher.publish(
+          await redis.publish(
             CONVERSATION_UPDATES_CHANNEL,
             JSON.stringify({ conversation }),
           );

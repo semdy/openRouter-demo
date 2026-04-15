@@ -1,5 +1,7 @@
 import { Buffer } from "node:buffer";
 import { pool } from "../db/initDB.js";
+import { redis } from "../redis.js";
+// import { logger } from "../logger.js";
 
 export const CONVERSATION_UPDATES_CHANNEL = "conversation-updates";
 
@@ -34,6 +36,19 @@ function mapConversationRow(row) {
     createdAt: row.createdAt,
     lastMessageRole: row.lastMessageRole,
     lastMessageContent: row.lastMessageContent,
+  };
+}
+
+function mapMessageRow(row) {
+  return {
+    messageId: row.messageId,
+    conversationId: row.conversationId,
+    role: row.role,
+    content: row.content,
+    messageIndex: row.messageIndex,
+    model: row.model,
+    metadata: row.metadata,
+    createdAt: row.createdAt,
   };
 }
 
@@ -118,4 +133,119 @@ export async function listConversations({ cursor, pageSize = 20 }) {
         ? encodeCursor(lastItem.lastMessageAt, lastItem.id)
         : null,
   };
+}
+
+export async function updateConversationTitle(conversationId, title) {
+  const result = await pool.query(
+    `
+      UPDATE conversations
+      SET title = $2, updated_at = NOW()
+      WHERE id = $1
+      RETURNING id
+    `,
+    [conversationId, title],
+  );
+
+  if (result.rowCount === 0) {
+    return null;
+  }
+
+  const conversation = await getConversationListItem(conversationId);
+  if (!conversation) {
+    return null;
+  }
+
+  // try {
+  //   await redis.publish(
+  //     CONVERSATION_UPDATES_CHANNEL,
+  //     JSON.stringify({ conversation }),
+  //   );
+  // } catch (error) {
+  //   logger.error("conversation_title_update_publish_failed", error, {
+  //     conversationId,
+  //   });
+  // }
+
+  return conversation;
+}
+
+export async function deleteConversationCascade(conversationId) {
+  const pgClient = await pool.connect();
+  try {
+    await pgClient.query("BEGIN");
+
+    const conversationResult = await pgClient.query(
+      `
+        SELECT id
+        FROM conversations
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [conversationId],
+    );
+
+    if (conversationResult.rowCount === 0) {
+      await pgClient.query("ROLLBACK");
+      return null;
+    }
+
+    const messageDeleteResult = await pgClient.query(
+      `
+        DELETE FROM messages
+        WHERE conversation_id = $1
+      `,
+      [conversationId],
+    );
+
+    await pgClient.query(
+      `
+        DELETE FROM conversations
+        WHERE id = $1
+      `,
+      [conversationId],
+    );
+
+    await redis.del(
+      `chat:${conversationId}`,
+      `chat:partial:${conversationId}`,
+      `chat:message-index:${conversationId}`,
+    );
+
+    await pgClient.query("COMMIT");
+
+    return {
+      conversationId,
+      deletedMessages: messageDeleteResult.rowCount ?? 0,
+    };
+  } catch (error) {
+    await pgClient.query("ROLLBACK");
+    throw error;
+  } finally {
+    pgClient.release();
+  }
+}
+
+export async function getConversationMessages(conversationId) {
+  const result = await pool.query(
+    `
+      SELECT
+        message_id AS "messageId",
+        conversation_id AS "conversationId",
+        role,
+        content,
+        message_index AS "messageIndex",
+        model,
+        metadata,
+        created_at AS "createdAt"
+      FROM messages
+      WHERE conversation_id = $1
+      ORDER BY
+        COALESCE(message_index, 2147483647) ASC,
+        created_at ASC,
+        id ASC
+    `,
+    [conversationId],
+  );
+
+  return result.rows.map(mapMessageRow);
 }
