@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { writeSSE } from "./common.js";
+import { writeSSE } from "./shared.js";
 import { logger } from "../logger.js";
 import { streamChatCompletion } from "../services/chatService.js";
 import { MAX_CONCURRENT } from "../config.js";
