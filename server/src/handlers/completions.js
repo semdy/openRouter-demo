@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { writeSSE } from "./shared.js";
 import { logger } from "../logger.js";
-import { streamChatCompletion } from "../services/chatService.js";
+import { streamChatCompletion } from "../services/completions.js";
 import { MAX_CONCURRENT } from "../config.js";
 
 // ===== Simple concurrency control =====

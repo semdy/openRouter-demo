@@ -7,7 +7,7 @@ import { logger } from "./logger.js";
 import {
   CONVERSATION_UPDATES_CHANNEL,
   getConversationListItem,
-} from "./services/conversationService.js";
+} from "./services/conversations.js";
 
 const connection = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,

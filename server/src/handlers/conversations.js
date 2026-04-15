@@ -9,7 +9,7 @@ import {
   getConversationMessages,
   listConversations,
   updateConversationTitle,
-} from "../services/conversationService.js";
+} from "../services/conversations.js";
 
 export async function getConversationsHandler(req, res) {
   const requestId = randomUUID();
