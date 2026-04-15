@@ -156,11 +156,9 @@ export class ChatSession {
             throw new Error(data.message);
           } else if (parsedFrame.event === "end") {
             this.options.onCompletionDone?.();
-            return;
           }
         }
       }
-      this.options.onCompletionDone?.();
     } catch (error) {
       this.options.onCompletionError?.(error as unknown as Error);
     } finally {
