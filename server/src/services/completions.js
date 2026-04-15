@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { client } from "../chat-client.js";
+import { client } from "../chatClient.js";
 import { chatQueue, QUEUE_NAME } from "../queue.js";
 import { CONTINUE_PROMPT, MAX_PROMPT_TOKENS } from "../config.js";
 import {

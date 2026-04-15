@@ -1,7 +1,7 @@
 import { Worker } from "bullmq";
 import Redis from "ioredis";
 import { redis } from "./redis.js";
-import { client } from "./chat-client.js";
+import { client } from "./chatClient.js";
 import { pool } from "./db/initDB.js";
 import { logger } from "./logger.js";
 import {
