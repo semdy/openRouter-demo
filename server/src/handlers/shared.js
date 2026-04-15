@@ -1,3 +1,4 @@
 export function writeSSE(res, event, data) {
-  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  data = typeof data === "string" ? data : JSON.stringify(data);
+  res.write(`event: ${event}\ndata: ${data}\n\n`);
 }

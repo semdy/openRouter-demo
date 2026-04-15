@@ -11,7 +11,7 @@ import {
   updateConversationTitle,
 } from "../services/conversationService.js";
 
-export async function conversationsHandler(req, res) {
+export async function getConversationsHandler(req, res) {
   const requestId = randomUUID();
   const requestStartedAt = Date.now();
   const { cursor, pageSize } = req.query;
@@ -129,7 +129,7 @@ export async function deleteConversationHandler(req, res) {
   }
 }
 
-export async function conversationMessagesHandler(req, res) {
+export async function getConversationMessagesHandler(req, res) {
   const requestId = randomUUID();
   const requestStartedAt = Date.now();
   const conversationId = getConversationIdParam(req);
@@ -177,11 +177,11 @@ conversationSubscriber.on("message", (channel, payload) => {
   if (channel !== CONVERSATION_UPDATES_CHANNEL) return;
 
   for (const res of conversationStreamClients) {
-    res.write(`event: conversation_updated\ndata: ${payload}\n\n`);
+    writeSSE(res, "conversation_updated", payload);
   }
 });
 
-export async function conversationsStreamHandler(req, res) {
+export async function getConversationsStreamHandler(req, res) {
   const requestId = randomUUID();
 
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
