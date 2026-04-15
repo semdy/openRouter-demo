@@ -32,11 +32,11 @@ export class Logger {
       level,
       event,
       timestamp: new Date().toISOString(),
-      ...fields,
+      ...(typeof fields === "string" ? { message: fields } : fields),
     });
   }
 
-  log(level, event, fields = {}) {
+  log(level, event, fields) {
     const levelIndex = Logger.levels.indexOf(level);
     if (levelIndex === -1 || levelIndex > this.logLevelIndex) return;
 
@@ -49,15 +49,15 @@ export class Logger {
     console.log(message);
   }
 
-  info(event, fields = {}) {
+  info(event, fields) {
     this.log("info", event, fields);
   }
 
-  fatal(event, fields = {}) {
+  fatal(event, fields) {
     this.log("fatal", event, fields);
   }
 
-  error(event, error, fields = {}) {
+  error(event, error, fields) {
     this.log("error", event, {
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
@@ -65,15 +65,15 @@ export class Logger {
     });
   }
 
-  warn(event, fields = {}) {
+  warn(event, fields) {
     this.log("warn", event, fields);
   }
 
-  debug(event, fields = {}) {
+  debug(event, fields) {
     this.log("debug", event, fields);
   }
 
-  logToFile(level, event, fields = {}) {
+  logToFile(level, event, fields) {
     const message = this.format(level, event, fields);
     this.stream?.write(message + "\n");
   }
