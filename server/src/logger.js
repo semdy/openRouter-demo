@@ -29,7 +29,8 @@ const logger = pino({
       }
       return method.apply(this, [
         {
-          msg: error instanceof Error ? error.message : event,
+          msg: event,
+          errMsg: error instanceof Error ? error.message : undefined,
           stack: error instanceof Error ? error.stack : undefined,
           ...(fields || error),
         },
