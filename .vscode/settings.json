@@ -25,6 +25,10 @@
     "src/languages"
   ],
   "cSpell.words": [
+    "BIGSERIAL",
+    "TIMESTAMPTZ",
+    "millis",
+    "bullmq",
     "tiktoken",
     "healthcheck",
     "markstream",
