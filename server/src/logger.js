@@ -3,7 +3,7 @@ import pino from "pino";
 const isDev = process.env.NODE_ENV === "development";
 // const isTTY = process.stdout.isTTY;
 
-const transport = isDev /* && isTTY */
+const options = isDev /* && isTTY */
   ? {
       transport: {
         target: "pino-pretty",
@@ -11,10 +11,23 @@ const transport = isDev /* && isTTY */
           colorize: true,
           translateTime: "SYS:standard",
           ignore: "pid,hostname",
+          // destination: "./logs/log.log",
         },
       },
     }
-  : {};
+  : process.env.LOG_ROTATE === "true"
+    ? {
+        transport: {
+          target: "pino-roll",
+          options: {
+            file: "logs/log",
+            frequency: "daily",
+            dateFormat: "yyyy.MM.dd",
+            mkdir: true,
+          },
+        },
+      }
+    : {};
 
 const logger = pino({
   hooks: {
@@ -37,7 +50,7 @@ const logger = pino({
       ]);
     },
   },
-  ...transport,
+  ...options,
 });
 
 export { logger };
