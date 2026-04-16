@@ -25,6 +25,12 @@
     "src/languages"
   ],
   "cSpell.words": [
+    "chatdb",
+    "isready",
+    "initdb",
+    "pgdata",
+    "noeviction",
+    "maxmemory",
     "BIGSERIAL",
     "TIMESTAMPTZ",
     "millis",
