@@ -230,7 +230,6 @@ export async function getConversationMessages(conversationId) {
     `
       SELECT
         message_id AS "messageId",
-        conversation_id AS "conversationId",
         role,
         content,
         message_index AS "messageIndex",

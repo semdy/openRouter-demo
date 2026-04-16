@@ -336,7 +336,7 @@ async function submitEditConversationTitle(conversationId: string) {
   conversationsError.value = "";
   try {
     const result = await updateConversationTitle(conversationId, nextTitle);
-    upsertConversation(result.conversation, false);
+    upsertConversation(result, false);
     cancelEditConversationTitle();
   } catch (error) {
     conversationsError.value =

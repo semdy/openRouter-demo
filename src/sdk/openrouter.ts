@@ -34,7 +34,6 @@ export type ConversationListResponse = {
 };
 
 export type ConversationMessageItem = Message & {
-  conversationId: string;
   messageIndex: number | null;
   model: string | null;
   metadata: Record<string, unknown>;
@@ -138,9 +137,7 @@ export async function updateConversationTitle(
     throw new Error(`Failed to update conversation title: ${res.status}`);
   }
 
-  return (await res.json()) as {
-    conversation: ConversationListItem;
-  };
+  return (await res.json()) as ConversationListItem;
 }
 
 export class ChatSession {

@@ -88,7 +88,7 @@ export async function updateConversation(req, res) {
       durationMs: Date.now() - requestStartedAt,
     });
 
-    return res.json({ conversation });
+    return res.json({ ...conversation });
   } catch (error) {
     logger.error("conversation_title_update_failed", error, {
       requestId,
