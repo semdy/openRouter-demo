@@ -2,7 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 
 export class Logger {
-  static levels = ["fatal", "error", "warn", "info", "debug"];
+  static levels = ["fatal", "error", "warn", "info", "debug", "trace"];
 
   constructor(logFilePath) {
     this.logLevelIndex = Logger.levels.indexOf("info");
@@ -17,7 +17,7 @@ export class Logger {
     }
   }
 
-  setLogLevel(level) {
+  setLevel(level) {
     const index = Logger.levels.indexOf(level);
     if (index === -1) {
       this.logLevelIndex = Logger.levels.indexOf("info");
@@ -73,6 +73,10 @@ export class Logger {
     this.log("debug", event, fields);
   }
 
+  trace(event, fields) {
+    this.log("trace", event, fields);
+  }
+
   logToFile(level, event, fields) {
     const message = this.format(level, event, fields);
     this.stream?.write(message + "\n");
@@ -86,5 +90,5 @@ export function createLogger(logFilePath) {
 export const logger = new Logger();
 
 if (process.env.LOG_LEVEL) {
-  logger.setLogLevel(process.env.LOG_LEVEL);
+  logger.setLevel(process.env.LOG_LEVEL);
 }

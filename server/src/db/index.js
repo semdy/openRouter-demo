@@ -13,7 +13,7 @@ export const query = async (text, params) => {
   const res = await pool.query(text, params);
   const duration = Date.now() - start;
   if (duration > 100) {
-    logger.warn("sql_executed_query", { text, duration, rows: res.rowCount });
+    logger.warn("long_executed_query", { text, duration, rows: res.rowCount });
   }
   return res;
 };
@@ -25,7 +25,7 @@ export const getClient = async () => {
 
   const timeout = setTimeout(() => {
     logger.warn(
-      "long_query_warning",
+      "long_executed_transaction",
       `A client has been checked out for more than 5 seconds!
        The last executed query on this client was: ${client.lastQuery}`,
     );

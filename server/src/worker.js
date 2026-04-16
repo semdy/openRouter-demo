@@ -199,7 +199,7 @@ async function handlePersist(data) {
         if (conversation) {
           await redis.publish(
             CONVERSATION_UPDATES_CHANNEL,
-            JSON.stringify({ conversation }),
+            JSON.stringify({ ...conversation }),
           );
         }
         logger.info("conversation_title_generated", {

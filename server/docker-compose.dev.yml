@@ -11,5 +11,8 @@ services:
     command: npm run dev
 
   worker:
+    build:
+      context: .
+      target: dev
     env_file:
       - .env.development

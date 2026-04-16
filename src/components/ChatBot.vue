@@ -185,11 +185,8 @@ function startConversationStream() {
 
   conversationEventSource.addEventListener("conversation_updated", (event) => {
     const messageEvent = event as MessageEvent<string>;
-    const data = JSON.parse(messageEvent.data) as {
-      conversation: ConversationListItem;
-    };
-
-    upsertConversation(data.conversation, true);
+    const data = JSON.parse(messageEvent.data) as ConversationListItem;
+    upsertConversation(data, true);
   });
 
   conversationEventSource.onerror = () => {
@@ -356,6 +353,9 @@ async function send() {
   input.value = "";
   ensureConversationMessages(activeConversationId.value);
   await chatSession.send(msg);
+  if (!routeConversationId.value) {
+    router.push(`/${activeConversationId.value}`);
+  }
 }
 
 watch(

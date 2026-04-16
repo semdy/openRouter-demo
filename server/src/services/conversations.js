@@ -158,7 +158,7 @@ export async function updateConversationTitle(conversationId, title) {
   // try {
   //   await redis.publish(
   //     CONVERSATION_UPDATES_CHANNEL,
-  //     JSON.stringify({ conversation }),
+  //     JSON.stringify({ ...conversation }),
   //   );
   // } catch (error) {
   //   logger.error("conversation_title_update_publish_failed", error, {
