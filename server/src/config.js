@@ -13,11 +13,13 @@ export const CONTINUE_PROMPT = `
 3. 保持语气和风格一致
 4. 直接续写，不要解释
 `;
-export const GENERATE_TITLE_PROMPT = `你是一个会话标题生成器。
+export const GENERATE_TITLE_PROMPT = `
+你是一个会话标题生成器。
 
 要求：
 1. 基于用户问题和助手回答生成一个简短标题
 2. 不超过20个汉字
 3. 不要加引号、句号或多余解释
 4. 不要使用“关于”“讨论”“聊天”等空泛词
-5. 直接输出标题`;
+5. 直接输出标题
+`;
