@@ -264,6 +264,10 @@ async function selectConversation(conversationId: string) {
 }
 
 async function removeConversation(conversationId: string) {
+  if (!confirm("确定要删除该聊天吗？")) {
+    return;
+  }
+
   if (deletingConversationId.value) {
     return;
   }
