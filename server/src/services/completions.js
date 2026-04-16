@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { client } from "../chatClient.js";
+import { chatClient } from "../chatClient.js";
 import { chatQueue, QUEUE_NAME } from "../queue.js";
 import { CONTINUE_PROMPT, MAX_PROMPT_TOKENS } from "../config.js";
 import {
@@ -43,7 +43,7 @@ export async function streamChatCompletion({
   });
 
   const upstreamStartedAt = Date.now();
-  const stream = await client.chat.send({
+  const stream = await chatClient.chat.send({
     chatRequest: {
       models: ["openai/gpt-5.4", "anthropic/claude-opus-4.6-fast"],
       messages,

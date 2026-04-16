@@ -181,7 +181,7 @@ function upsertConversation(
 
 function startConversationStream() {
   conversationEventSource?.close();
-  conversationEventSource = new EventSource("/api/conversations/stream");
+  conversationEventSource = new EventSource("/api/chat/conversations/stream");
 
   conversationEventSource.addEventListener("conversation_updated", (event) => {
     const messageEvent = event as MessageEvent<string>;

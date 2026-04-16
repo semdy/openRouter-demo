@@ -1,7 +1,8 @@
+import express from "express";
 import { randomUUID } from "node:crypto";
 import { writeSSE } from "./shared.js";
-import { createRedisSubscriber } from "../redis.js";
-import { logger } from "../logger.js";
+import { createRedisSubscriber } from "../../redis.js";
+import { logger } from "../../logger.js";
 import {
   CONVERSATION_UPDATES_CHANNEL,
   deleteConversationCascade,
@@ -9,7 +10,15 @@ import {
   getConversationMessages as getConversationMessagesService,
   listConversations,
   updateConversationTitle,
-} from "../services/conversations.js";
+} from "../../services/conversations.js";
+
+const router = express.Router();
+
+router.get("/", getConversations);
+router.get("/stream", updateConversationStream);
+router.patch("/:conversationId", updateConversation);
+router.delete("/:conversationId", deleteConversation);
+router.get("/:conversationId/messages", getConversationMessages);
 
 export async function getConversations(req, res) {
   const requestId = randomUUID();
@@ -207,3 +216,5 @@ export async function updateConversationStream(req, res) {
     });
   });
 }
+
+export default router;

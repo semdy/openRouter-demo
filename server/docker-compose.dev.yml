@@ -1,5 +1,8 @@
 services:
   app:
+    build:
+      context: .
+      target: dev
     volumes:
       - .:/app
       - /app/node_modules # 保留容器内依赖

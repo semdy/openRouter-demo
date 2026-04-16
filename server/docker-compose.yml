@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:15
-    # container_name: chat-postgres
+    container_name: chat-postgres
     restart: always
     environment:
       POSTGRES_USER: root
@@ -20,7 +20,7 @@ services:
 
   redis:
     image: redis:7
-    # container_name: chat-redis
+    container_name: chat-redis
     restart: always
     ports:
       - "6379:6379"
@@ -40,7 +40,7 @@ services:
 
   app:
     build: .
-    # container_name: chat-app
+    container_name: chat-app
     restart: always
     depends_on:
       postgres:
@@ -51,7 +51,7 @@ services:
       - .env
     ports:
       - "3000:3000"
-    command: node src/server.js
+    command: npm run start
     healthcheck:
       # test: ["CMD", "curl", "-f", "http://localhost:3000/health/check"]
       test:
@@ -68,7 +68,7 @@ services:
 
   worker:
     build: .
-    # container_name: chat-worker
+    container_name: chat-worker
     restart: always
     depends_on:
       postgres:
@@ -79,7 +79,7 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    command: node src/worker.js
+    command: npm run worker
 
 volumes:
   pgdata:

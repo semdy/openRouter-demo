@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { pool } from "../db/initDB.js";
+import * as db from "../db/index.js";
 import { redis } from "../redis.js";
 // import { logger } from "../logger.js";
 
@@ -53,7 +53,7 @@ function mapMessageRow(row) {
 }
 
 export async function getConversationListItem(conversationId) {
-  const result = await pool.query(
+  const result = await db.query(
     `
       SELECT
         c.id,
@@ -95,7 +95,7 @@ export async function listConversations({ cursor, pageSize = 20 }) {
     `;
   }
 
-  const result = await pool.query(
+  const result = await db.query(
     `
       SELECT
         c.id,
@@ -136,7 +136,7 @@ export async function listConversations({ cursor, pageSize = 20 }) {
 }
 
 export async function updateConversationTitle(conversationId, title) {
-  const result = await pool.query(
+  const result = await db.query(
     `
       UPDATE conversations
       SET title = $2, updated_at = NOW()
@@ -170,11 +170,11 @@ export async function updateConversationTitle(conversationId, title) {
 }
 
 export async function deleteConversationCascade(conversationId) {
-  const pgClient = await pool.connect();
+  const dbClient = await db.getClient();
   try {
-    await pgClient.query("BEGIN");
+    await dbClient.query("BEGIN");
 
-    const conversationResult = await pgClient.query(
+    const conversationResult = await dbClient.query(
       `
         SELECT id
         FROM conversations
@@ -185,11 +185,11 @@ export async function deleteConversationCascade(conversationId) {
     );
 
     if (conversationResult.rowCount === 0) {
-      await pgClient.query("ROLLBACK");
+      await dbClient.query("ROLLBACK");
       return null;
     }
 
-    const messageDeleteResult = await pgClient.query(
+    const messageDeleteResult = await dbClient.query(
       `
         DELETE FROM messages
         WHERE conversation_id = $1
@@ -197,7 +197,7 @@ export async function deleteConversationCascade(conversationId) {
       [conversationId],
     );
 
-    await pgClient.query(
+    await dbClient.query(
       `
         DELETE FROM conversations
         WHERE id = $1
@@ -211,22 +211,22 @@ export async function deleteConversationCascade(conversationId) {
       `chat:message-index:${conversationId}`,
     );
 
-    await pgClient.query("COMMIT");
+    await dbClient.query("COMMIT");
 
     return {
       conversationId,
       deletedMessages: messageDeleteResult.rowCount ?? 0,
     };
   } catch (error) {
-    await pgClient.query("ROLLBACK");
+    await dbClient.query("ROLLBACK");
     throw error;
   } finally {
-    pgClient.release();
+    dbClient.release();
   }
 }
 
 export async function getConversationMessages(conversationId) {
-  const result = await pool.query(
+  const result = await db.query(
     `
       SELECT
         message_id AS "messageId",

@@ -83,7 +83,7 @@ export async function fetchConversations(cursor?: string, pageSize = 20) {
   }
 
   const query = params.toString();
-  const res = await fetch(`/api/conversations${query ? `?${query}` : ""}`);
+  const res = await fetch(`/api/chat/conversations${query ? `?${query}` : ""}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch conversations: ${res.status}`);
   }
@@ -93,7 +93,7 @@ export async function fetchConversations(cursor?: string, pageSize = 20) {
 
 export async function fetchConversationMessages(conversationId: string) {
   const res = await fetch(
-    `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
   );
   if (!res.ok) {
     throw new Error(`Failed to fetch conversation messages: ${res.status}`);
@@ -103,9 +103,12 @@ export async function fetchConversationMessages(conversationId: string) {
 }
 
 export async function deleteConversation(conversationId: string) {
-  const res = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}`, {
-    method: "DELETE",
-  });
+  const res = await fetch(
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}`,
+    {
+      method: "DELETE",
+    },
+  );
   if (!res.ok) {
     throw new Error(`Failed to delete conversation: ${res.status}`);
   }
@@ -122,7 +125,7 @@ export async function updateConversationTitle(
   title: string,
 ) {
   const res = await fetch(
-    `/api/conversations/${encodeURIComponent(conversationId)}`,
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}`,
     {
       method: "PATCH",
       headers: {
@@ -163,7 +166,7 @@ export class ChatSession {
 
     this.controller = new AbortController();
 
-    const res = await fetch("/api/completions", {
+    const res = await fetch("/api/chat/completions", {
       method: "POST",
       signal: this.controller.signal,
       headers: {

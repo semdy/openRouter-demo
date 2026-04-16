@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+Dockerfile
+.dockerignore
+.git
+.gitignore
+
+# build 输出（如果你用的是多阶段构建，这些不需要拷进去）
+dist
+build
+
+# 环境文件
+.env
+.env.*

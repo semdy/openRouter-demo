@@ -1,8 +1,8 @@
 import { Worker } from "bullmq";
 import Redis from "ioredis";
 import { redis } from "./redis.js";
-import { client } from "./chatClient.js";
-import { pool } from "./db/initDB.js";
+import { chatClient } from "./chatClient.js";
+import * as db from "./db/index.js";
 import { logger } from "./logger.js";
 import {
   CONVERSATION_UPDATES_CHANNEL,
@@ -46,7 +46,7 @@ worker.on("failed", (job, err) => {
 });
 
 async function generateConversationTitle({ userMessage, assistantMessage }) {
-  const stream = await client.chat.send({
+  const stream = await chatClient.chat.send({
     chatRequest: {
       models: ["openai/gpt-5.4-mini"],
       messages: [
@@ -79,17 +79,17 @@ async function handlePersist(data) {
   const { conversationId, messages, userId = null } = data;
   const startedAt = Date.now();
 
-  const client = await pool.connect();
+  const dbClient = await db.getClient();
   let shouldGenerateTitle = false;
   let generatedTitleInput = null;
 
   try {
-    await client.query("BEGIN");
+    await dbClient.query("BEGIN");
 
     const firstUserMessage = messages.find(
       (message) => message.role === "user",
     );
-    const existingConversationResult = await client.query(
+    const existingConversationResult = await dbClient.query(
       `
         SELECT title
         FROM conversations
@@ -100,7 +100,7 @@ async function handlePersist(data) {
     );
     const existingTitle = existingConversationResult.rows[0]?.title ?? null;
 
-    await client.query(
+    await dbClient.query(
       `
         INSERT INTO conversations (id, user_id, title, updated_at, last_message_at)
         VALUES ($1, $2, $3, NOW(), NOW())
@@ -146,7 +146,7 @@ async function handlePersist(data) {
       );
     });
 
-    await client.query(
+    await dbClient.query(
       `
         INSERT INTO messages (
           message_id,
@@ -163,7 +163,7 @@ async function handlePersist(data) {
       params,
     );
 
-    await client.query("COMMIT");
+    await dbClient.query("COMMIT");
 
     logger.info("persist_transaction_committed", {
       conversationId,
@@ -171,7 +171,7 @@ async function handlePersist(data) {
       durationMs: Date.now() - startedAt,
     });
   } catch (err) {
-    await client.query("ROLLBACK");
+    await dbClient.query("ROLLBACK");
     logger.error("persist_transaction_failed", err, {
       conversationId,
       messageCount: messages.length,
@@ -179,7 +179,7 @@ async function handlePersist(data) {
     });
     throw err; // BullMQ 会自动 retry
   } finally {
-    client.release();
+    dbClient.release();
   }
 
   if (shouldGenerateTitle && generatedTitleInput) {
@@ -187,7 +187,7 @@ async function handlePersist(data) {
       const generatedTitle =
         await generateConversationTitle(generatedTitleInput);
       if (generatedTitle) {
-        await pool.query(
+        await db.query(
           `
             UPDATE conversations
             SET title = $2, updated_at = NOW()

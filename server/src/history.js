@@ -1,4 +1,4 @@
-import { pool } from "./db/initDB.js";
+import * as db from "./db/index.js";
 import {
   CACHE_TTL_SECONDS,
   MAX_PROMPT_TOKENS,
@@ -63,7 +63,7 @@ export async function getHistory(conversationId) {
   }
 
   if (cachedHistory.length === 0) {
-    const result = await pool.query(
+    const result = await db.query(
       `
         SELECT role, content, message_index AS "messageIndex"
         FROM (
@@ -102,7 +102,7 @@ export async function getHistory(conversationId) {
     return history;
   }
 
-  const result = await pool.query(
+  const result = await db.query(
     `
       SELECT role, content, message_index AS "messageIndex"
       FROM messages
@@ -152,7 +152,7 @@ export async function saveHistory(conversationId, messages) {
 }
 
 async function getCurrentMaxMessageIndex(conversationId) {
-  const result = await pool.query(
+  const result = await db.query(
     `
       SELECT COALESCE(MAX(message_index), -1) AS max_index
       FROM messages

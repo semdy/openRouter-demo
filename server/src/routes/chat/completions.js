@@ -1,8 +1,13 @@
+import express from "express";
 import { randomUUID } from "node:crypto";
 import { writeSSE } from "./shared.js";
-import { logger } from "../logger.js";
-import { streamChatCompletion } from "../services/completions.js";
-import { MAX_CONCURRENT } from "../config.js";
+import { logger } from "../../logger.js";
+import { streamChatCompletion } from "../../services/completions.js";
+import { MAX_CONCURRENT } from "../../config.js";
+
+const router = express.Router();
+
+router.post("/", completions);
 
 // ===== Simple concurrency control =====
 let currentRequests = 0;
@@ -112,3 +117,5 @@ export async function completions(req, res) {
     });
   }
 }
+
+export default router;
