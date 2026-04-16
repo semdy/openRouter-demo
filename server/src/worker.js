@@ -8,6 +8,7 @@ import {
   CONVERSATION_UPDATES_CHANNEL,
   getConversationListItem,
 } from "./services/conversations.js";
+import { GENERATE_TITLE_PROMPT } from "./config.js";
 
 const connection = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,
@@ -45,21 +46,17 @@ worker.on("failed", (job, err) => {
   });
 });
 
-async function generateConversationTitle({ userMessage, assistantMessage }) {
+async function generateConversationTitleByLLM({
+  userMessage,
+  assistantMessage,
+}) {
   const stream = await chatClient.chat.send({
     chatRequest: {
       models: ["openai/gpt-5.4-mini"],
       messages: [
         {
           role: "system",
-          content: `你是一个会话标题生成器。
-
-要求：
-1. 基于用户问题和助手回答生成一个简短标题
-2. 不超过20个汉字
-3. 不要加引号、句号或多余解释
-4. 不要使用“关于”“讨论”“聊天”等空泛词
-5. 直接输出标题`,
+          content: GENERATE_TITLE_PROMPT,
         },
         {
           role: "user",
@@ -185,7 +182,7 @@ async function handlePersist(data) {
   if (shouldGenerateTitle && generatedTitleInput) {
     try {
       const generatedTitle =
-        await generateConversationTitle(generatedTitleInput);
+        await generateConversationTitleByLLM(generatedTitleInput);
       if (generatedTitle) {
         await db.query(
           `
