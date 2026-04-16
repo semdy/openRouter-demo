@@ -9,7 +9,7 @@ const app = express();
 app.use(cors);
 app.use(express.json());
 
-app.get("/api", apiRouter);
+app.use("/api", apiRouter);
 
 app.get("/health/check", (_, res) => {
   res.send("ok");

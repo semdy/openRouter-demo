@@ -12,7 +12,9 @@ export const query = async (text, params) => {
   const start = Date.now();
   const res = await pool.query(text, params);
   const duration = Date.now() - start;
-  logger.info("sql_executed_query", { text, duration, rows: res.rowCount });
+  if (duration > 100) {
+    logger.warn("sql_executed_query", { text, duration, rows: res.rowCount });
+  }
   return res;
 };
 
