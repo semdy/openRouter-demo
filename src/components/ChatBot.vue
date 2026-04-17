@@ -263,6 +263,9 @@ async function loadConversationMessages(conversationId: string) {
   conversationMessagesError.value = "";
   try {
     const result = await fetchConversationMessages(conversationId);
+    if (result.items.length === 0) {
+      return;
+    }
     messagesByConversation.value[conversationId] =
       result.items.map(toMessageWithNodes);
   } catch (error) {
@@ -409,7 +412,6 @@ watch(
     loading.value = false;
     if (routeConversationId.value) {
       await loadConversationMessages(conversationId);
-      return;
     }
   },
   { immediate: true },

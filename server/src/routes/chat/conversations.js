@@ -148,10 +148,14 @@ export async function getConversationMessages(req, res) {
   }
 
   try {
-    const conversation = await getConversationListItem(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ error: "Conversation not found" });
-    }
+    // const conversation = await getConversationListItem(conversationId);
+    // if (!conversation) {
+    //   // return res.status(400).json({ error: "Conversation not found" });
+    //   return res.json({
+    //     conversationId,
+    //     items: [],
+    //   });
+    // }
 
     const items = await getConversationMessagesService(conversationId);
 
