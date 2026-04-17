@@ -1,8 +1,12 @@
 import express from "express";
-import fs from "fs";
-import path from "path";
+import { fileURLToPath } from "node:url";
+import fs from "node:fs";
+import path from "node:path";
 
 const router = express.Router();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const files = fs.readdirSync(__dirname);
 
