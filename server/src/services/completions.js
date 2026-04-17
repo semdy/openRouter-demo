@@ -15,6 +15,7 @@ import { logger } from "../logger.js";
 export async function streamChatCompletion({
   prompt,
   conversationId,
+  userId,
   requestId,
   continuation,
   onDelta,
@@ -144,6 +145,7 @@ export async function streamChatCompletion({
   try {
     const job = await chatQueue.add(QUEUE_NAME, {
       conversationId,
+      userId,
       messages: persistedMessages,
     });
 

@@ -177,7 +177,7 @@ export async function getConversationMessages(req, res) {
   }
 }
 
-const conversationStreamClients = new Set();
+const conversationStreamClients = new Map();
 const conversationSubscriber = createRedisSubscriber();
 
 await conversationSubscriber.subscribe(CONVERSATION_UPDATES_CHANNEL);
@@ -185,13 +185,44 @@ await conversationSubscriber.subscribe(CONVERSATION_UPDATES_CHANNEL);
 conversationSubscriber.on("message", (channel, payload) => {
   if (channel !== CONVERSATION_UPDATES_CHANNEL) return;
 
-  for (const res of conversationStreamClients) {
-    writeSSE(res, "conversation_updated", payload);
+  try {
+    const parsedPayload = JSON.parse(payload);
+
+    if (parsedPayload.userId) {
+      const targets = conversationStreamClients.get(parsedPayload.userId);
+      if (!targets?.size) {
+        return;
+      }
+      for (const res of targets) {
+        writeSSE(res, "conversation_updated", parsedPayload);
+      }
+      return;
+    }
+
+    for (const clientResponses of conversationStreamClients.values()) {
+      for (const res of clientResponses) {
+        writeSSE(res, "conversation_updated", parsedPayload);
+      }
+    }
+  } catch (error) {
+    logger.error("conversation_update_subscriber_failed", error);
   }
 });
 
+function getClientsCount() {
+  return Array.from(conversationStreamClients.values()).reduce(
+    (total, entries) => total + entries.size,
+    0,
+  );
+}
+
 export async function updateConversationStream(req, res) {
   const requestId = randomUUID();
+  const clientId = req.query.clientId;
+
+  if (!clientId) {
+    return res.status(400).json({ error: "clientId is required" });
+  }
 
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-store, no-transform");
@@ -199,20 +230,28 @@ export async function updateConversationStream(req, res) {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders?.();
 
-  conversationStreamClients.add(res);
+  const clientResponses = conversationStreamClients.get(clientId) ?? new Set();
+  clientResponses.add(res);
+  conversationStreamClients.set(clientId, clientResponses);
 
   writeSSE(res, "ready", { ok: true });
 
   logger.info("conversation_stream_connected", {
     requestId,
-    clients: conversationStreamClients.size,
+    clientId,
+    clientCount: getClientsCount(),
   });
 
   res.on("close", () => {
-    conversationStreamClients.delete(res);
+    const currentResponses = conversationStreamClients.get(clientId);
+    currentResponses?.delete(res);
+    if (currentResponses && currentResponses.size === 0) {
+      conversationStreamClients.delete(clientId);
+    }
     logger.info("conversation_stream_disconnected", {
       requestId,
-      clients: conversationStreamClients.size,
+      clientId,
+      clientCount: getClientsCount(),
     });
   });
 }

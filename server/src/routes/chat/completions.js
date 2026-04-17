@@ -35,11 +35,14 @@ export async function completions(req, res) {
     return res.status(429).json({ error: "Too many requests" });
   }
 
-  const { prompt, conversationId, continuation } = req.body;
+  const { prompt, conversationId, clientId, continuation } = req.body;
+  const resolvedConversationId =
+    typeof conversationId === "string" ? conversationId.trim() : randomUUID();
 
   logger.info("chat_request_started", {
     requestId,
-    conversationId,
+    conversationId: resolvedConversationId,
+    clientId,
     continuation: Boolean(continuation),
     promptLength: prompt?.length ?? 0,
     currentRequests,
@@ -49,6 +52,7 @@ export async function completions(req, res) {
   res.setHeader("Cache-Control", "no-cache, no-store, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
+  res.setHeader("X-Conversation-Id", resolvedConversationId);
   res.flushHeaders?.();
 
   let clientClosed = false;
@@ -58,13 +62,13 @@ export async function completions(req, res) {
       clientClosed = true;
       logger.info("chat_request_client_closed", {
         requestId,
-        conversationId,
+        conversationId: resolvedConversationId,
         durationMs: Date.now() - requestStartedAt,
       });
     } else {
       logger.info("chat_response_closed", {
         requestId,
-        conversationId,
+        conversationId: resolvedConversationId,
         durationMs: Date.now() - requestStartedAt,
       });
     }
@@ -73,7 +77,7 @@ export async function completions(req, res) {
   res.on("finish", () => {
     logger.info("chat_response_finished", {
       requestId,
-      conversationId,
+      conversationId: resolvedConversationId,
       durationMs: Date.now() - requestStartedAt,
     });
   });
@@ -82,7 +86,8 @@ export async function completions(req, res) {
     await streamChatCompletion({
       prompt,
       requestId,
-      conversationId,
+      conversationId: resolvedConversationId,
+      userId: clientId,
       continuation,
       onDelta: async (content) => {
         writeSSE(res, "delta", { content });
@@ -97,7 +102,7 @@ export async function completions(req, res) {
   } catch (err) {
     logger.error("chat_request_failed", err, {
       requestId,
-      conversationId,
+      conversationId: resolvedConversationId,
       durationMs: Date.now() - requestStartedAt,
     });
     if (!res.writableEnded) {
@@ -110,7 +115,8 @@ export async function completions(req, res) {
     release();
     logger.info("chat_request_completed", {
       requestId,
-      conversationId,
+      conversationId: resolvedConversationId,
+      clientId,
       currentRequests,
       durationMs: Date.now() - requestStartedAt,
       clientClosed,

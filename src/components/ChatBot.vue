@@ -18,6 +18,7 @@ import {
   deleteConversation,
   fetchConversationMessages,
   fetchConversations,
+  getOrCreateClientId,
   updateConversationTitle,
   type ConversationListItem,
   type ConversationMessageItem,
@@ -49,6 +50,7 @@ const savingTitleConversationId = ref<string | null>(null);
 const input = ref("");
 const loading = ref(false);
 const draftConversationId = ref(uuid());
+const clientId = getOrCreateClientId();
 
 const routeConversationId = computed(() => {
   const raw = route.params.conversationId;
@@ -64,7 +66,10 @@ const activeConversationId = computed(() => {
   return routeConversationId.value ?? draftConversationId.value;
 });
 
-let chatSession = createChatSession(activeConversationId.value);
+let chatSession = createChatSession(
+  routeConversationId.value ?? undefined,
+  activeConversationId.value,
+);
 let conversationEventSource: EventSource | null = null;
 
 const currentMessages = computed(() => {
@@ -101,16 +106,38 @@ function toMessageWithNodes(
   return normalized;
 }
 
-function createChatSession(conversationId: string) {
+function migrateConversationMessages(
+  fromConversationId: string,
+  toConversationId: string,
+) {
+  if (fromConversationId === toConversationId) {
+    return;
+  }
+
+  const fromMessages = messagesByConversation.value[fromConversationId];
+  if (!fromMessages) {
+    return;
+  }
+
+  messagesByConversation.value[toConversationId] =
+    messagesByConversation.value[toConversationId] ?? fromMessages;
+  delete messagesByConversation.value[fromConversationId];
+}
+
+function createChatSession(
+  conversationId?: string,
+  draftId = draftConversationId.value,
+) {
   return new ChatSession({
     conversationId,
+    clientId,
     onReceiveMessage(message: Message) {
-      const conversationMessages = ensureConversationMessages(conversationId);
+      const conversationMessages = ensureConversationMessages(draftId);
       conversationMessages.push(message);
       loading.value = true;
     },
     onReceiveChunk(chunk: string) {
-      const conversationMessages = ensureConversationMessages(conversationId);
+      const conversationMessages = ensureConversationMessages(draftId);
       const lastAssistantMsg =
         conversationMessages[conversationMessages.length - 1];
       if (!lastAssistantMsg) return;
@@ -130,9 +157,9 @@ function createChatSession(conversationId: string) {
   });
 }
 
-function resetChatSession(conversationId: string) {
+function resetChatSession(draftId: string) {
   chatSession.abort();
-  chatSession = createChatSession(conversationId);
+  chatSession = createChatSession(undefined, draftId);
   loading.value = false;
 }
 
@@ -181,7 +208,9 @@ function upsertConversation(
 
 function startConversationStream() {
   conversationEventSource?.close();
-  conversationEventSource = new EventSource("/api/chat/conversations/stream");
+  conversationEventSource = new EventSource(
+    `/api/chat/conversations/stream?clientId=${encodeURIComponent(clientId)}`,
+  );
 
   conversationEventSource.addEventListener("conversation_updated", (event) => {
     const messageEvent = event as MessageEvent<string>;
@@ -354,11 +383,18 @@ async function send() {
   const msg = input.value.trim();
   if (!msg || loading.value) return;
 
+  const currentRouteConversationId = routeConversationId.value;
+  const currentDraftConversationId = draftConversationId.value;
+
   input.value = "";
   ensureConversationMessages(activeConversationId.value);
-  await chatSession.send(msg);
-  if (!routeConversationId.value) {
-    router.push(`/${activeConversationId.value}`);
+  const persistedConversationId = await chatSession.send(msg);
+  if (!currentRouteConversationId && persistedConversationId) {
+    migrateConversationMessages(
+      currentDraftConversationId,
+      persistedConversationId,
+    );
+    await router.push(`/${persistedConversationId}`);
   }
 }
 
@@ -366,7 +402,13 @@ watch(
   activeConversationId,
   async (conversationId) => {
     ensureConversationMessages(conversationId);
-    resetChatSession(conversationId);
+    const draftId = routeConversationId.value
+      ? conversationId
+      : draftConversationId.value;
+    const persistedConversationId = routeConversationId.value ?? undefined;
+    chatSession.abort();
+    chatSession = createChatSession(persistedConversationId, draftId);
+    loading.value = false;
     if (routeConversationId.value) {
       await loadConversationMessages(conversationId);
       return;

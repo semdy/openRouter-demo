@@ -73,7 +73,7 @@ async function generateConversationTitleByLLM({
 }
 
 async function handlePersist(data) {
-  const { conversationId, messages, userId = null } = data;
+  const { conversationId, messages, userId } = data;
   const startedAt = Date.now();
 
   const dbClient = await db.getClient();
@@ -194,15 +194,24 @@ async function handlePersist(data) {
         );
         const conversation = await getConversationListItem(conversationId);
         if (conversation) {
-          await redis.publish(
-            CONVERSATION_UPDATES_CHANNEL,
-            JSON.stringify({ ...conversation }),
-          );
+          try {
+            await redis.publish(
+              CONVERSATION_UPDATES_CHANNEL,
+              JSON.stringify({
+                ...conversation,
+                userId: conversation.userId ?? userId ?? null,
+              }),
+            );
+            logger.info("conversation_title_generated_and_published", {
+              conversationId,
+              title: generatedTitle,
+            });
+          } catch (error) {
+            logger.error("conversation_title_publish_failed", error, {
+              conversationId,
+            });
+          }
         }
-        logger.info("conversation_title_generated", {
-          conversationId,
-          title: generatedTitle,
-        });
       }
     } catch (error) {
       logger.error("conversation_title_generation_failed", error, {

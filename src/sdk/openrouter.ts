@@ -8,7 +8,8 @@ export type Message = {
 };
 
 export type ChatSessionOptions = {
-  conversationId: string;
+  conversationId?: string;
+  clientId?: string;
   onReceiveMessage?: (message: Message) => void;
   onReceiveChunk?: (chunk: string) => void;
   onCompletionError?: (error: Error) => void;
@@ -49,6 +50,22 @@ type SSEFrame = {
   event: string;
   data: string;
 };
+
+const CHAT_CLIENT_ID_STORAGE_KEY = "chat_client_id";
+
+export function getOrCreateClientId() {
+  const cached = window.localStorage
+    .getItem(CHAT_CLIENT_ID_STORAGE_KEY)
+    ?.trim();
+
+  if (cached) {
+    return cached;
+  }
+
+  const next = uuid();
+  window.localStorage.setItem(CHAT_CLIENT_ID_STORAGE_KEY, next);
+  return next;
+}
 
 function parseSSEFrame(frame: string): SSEFrame | null {
   const lines = frame.split(/\r?\n/);
@@ -147,9 +164,6 @@ export class ChatSession {
     if (options) {
       this.options = options;
     }
-    if (!this.options.conversationId) {
-      throw new Error("No conversationId provided");
-    }
   }
 
   async send(userPrompt: string) {
@@ -163,21 +177,30 @@ export class ChatSession {
 
     this.controller = new AbortController();
 
+    const requestBody: {
+      prompt: string;
+      clientId: string;
+      conversationId?: string;
+    } = {
+      prompt: userPrompt,
+      clientId: this.options.clientId ?? getOrCreateClientId(),
+      conversationId: this.options.conversationId ?? undefined,
+    };
+
     const res = await fetch("/api/chat/completions", {
       method: "POST",
       signal: this.controller.signal,
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        prompt: userPrompt,
-        conversationId: this.options.conversationId,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!res.ok) {
       throw new Error(`Request failed with status ${res.status}`);
     }
+
+    const assignedConversationId = res.headers.get("X-Conversation-Id")?.trim();
 
     const reader = res.body?.getReader();
 
@@ -227,6 +250,8 @@ export class ChatSession {
       this.controller = null;
       this.options.onCompletionFinally?.();
     }
+
+    return assignedConversationId;
   }
 
   handleReceivedMessage(message: Message) {
