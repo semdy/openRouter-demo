@@ -15,6 +15,10 @@ app.get("/health/check", (_, res) => {
   res.send("ok");
 });
 
+app.use((err, req, res, next) => {
+  res.status(500).json({ message: err.message });
+});
+
 await initDB();
 
 app.listen(3000, () => {
