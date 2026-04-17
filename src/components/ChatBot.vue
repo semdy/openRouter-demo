@@ -39,6 +39,7 @@ const messagesByConversation = ref<Record<string, MessageWithNodes[]>>({});
 const conversations = ref<ConversationListItem[]>([]);
 const conversationsLoading = ref(false);
 const conversationsError = ref("");
+const conversationMessagesError = ref("");
 const messageLoading = ref(false);
 const nextCursor = ref<string | null>(null);
 const loadingMore = ref(false);
@@ -66,10 +67,7 @@ const activeConversationId = computed(() => {
   return routeConversationId.value ?? draftConversationId.value;
 });
 
-let chatSession = createChatSession(
-  routeConversationId.value ?? undefined,
-  activeConversationId.value,
-);
+let chatSession: ChatSession | null = null;
 let conversationEventSource: EventSource | null = null;
 
 const currentMessages = computed(() => {
@@ -158,7 +156,7 @@ function createChatSession(
 }
 
 function resetChatSession(draftId: string) {
-  chatSession.abort();
+  chatSession?.abort();
   chatSession = createChatSession(undefined, draftId);
   loading.value = false;
 }
@@ -262,34 +260,34 @@ async function loadConversations(loadMore = false) {
 
 async function loadConversationMessages(conversationId: string) {
   messageLoading.value = true;
-  conversationsError.value = "";
+  conversationMessagesError.value = "";
   try {
     const result = await fetchConversationMessages(conversationId);
     messagesByConversation.value[conversationId] =
       result.items.map(toMessageWithNodes);
   } catch (error) {
-    conversationsError.value =
+    conversationMessagesError.value =
       error instanceof Error ? error.message : "聊天消息加载失败";
   } finally {
     messageLoading.value = false;
   }
 }
 
-async function startNewConversation() {
+function startNewConversation() {
   input.value = "";
+  conversationMessagesError.value = "";
   draftConversationId.value = uuid();
   if (routeConversationId.value !== null) {
-    await router.push("/");
+    router.push("/");
     return;
   }
-
   ensureConversationMessages(draftConversationId.value);
   resetChatSession(draftConversationId.value);
 }
 
-async function selectConversation(conversationId: string) {
+function selectConversation(conversationId: string) {
   if (conversationId === routeConversationId.value) return;
-  await router.push(`/${conversationId}`);
+  router.push(`/${conversationId}`);
 }
 
 async function removeConversation(conversationId: string) {
@@ -312,7 +310,7 @@ async function removeConversation(conversationId: string) {
 
     if (routeConversationId.value === conversationId) {
       draftConversationId.value = uuid();
-      await router.push("/");
+      router.push("/");
     }
   } catch (error) {
     conversationsError.value =
@@ -388,13 +386,13 @@ async function send() {
 
   input.value = "";
   ensureConversationMessages(activeConversationId.value);
-  const persistedConversationId = await chatSession.send(msg);
+  const persistedConversationId = await chatSession?.send(msg);
   if (!currentRouteConversationId && persistedConversationId) {
     migrateConversationMessages(
       currentDraftConversationId,
       persistedConversationId,
     );
-    await router.push(`/${persistedConversationId}`);
+    router.push(`/${persistedConversationId}`);
   }
 }
 
@@ -406,7 +404,7 @@ watch(
       ? conversationId
       : draftConversationId.value;
     const persistedConversationId = routeConversationId.value ?? undefined;
-    chatSession.abort();
+    chatSession?.abort();
     chatSession = createChatSession(persistedConversationId, draftId);
     loading.value = false;
     if (routeConversationId.value) {
@@ -424,7 +422,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  chatSession.abort();
+  chatSession?.abort();
   conversationEventSource?.close();
 });
 </script>
@@ -452,7 +450,7 @@ onBeforeUnmount(() => {
       <p v-else-if="conversationsLoading" class="panel-state loading">
         聊天记录加载中...
       </p>
-      <div v-else class="conversation-list">
+      <div class="conversation-list">
         <div
           v-for="conversation in conversations"
           :key="conversation.id"
@@ -528,6 +526,9 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="chat-messages">
+        <p v-if="conversationMessagesError" class="panel-state error">
+          {{ conversationMessagesError }}
+        </p>
         <div v-if="messageLoading" class="panel-state loading">加载中...</div>
         <div v-if="currentMessages.length === 0" class="empty-state">
           <h3>开始新聊天</h3>
@@ -633,6 +634,7 @@ onBeforeUnmount(() => {
 .panel-state.error {
   background: rgba(191, 54, 12, 0.1);
   color: #9a3412;
+  margin-bottom: 10px;
 }
 
 .chat-messages .panel-state.loading {

@@ -50,7 +50,7 @@ export async function completions(req, res) {
     requestId,
     conversationId: resolvedConversationId,
     clientId,
-    continuation: Boolean(continuation),
+    continuation,
     promptLength: prompt?.length ?? 0,
     currentRequests,
   });

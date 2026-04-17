@@ -115,7 +115,7 @@ export async function streamChatCompletion({
       content: prompt,
       messageIndex: nextMessageIndex,
       metadata: {
-        continuation: Boolean(continuation),
+        continuation,
       },
     },
     {
