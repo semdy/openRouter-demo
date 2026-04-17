@@ -579,10 +579,11 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 24px 18px;
+  padding: 16px 0;
   border-right: 1px solid rgba(35, 52, 53, 0.12);
   background: rgba(255, 252, 246, 0.84);
   backdrop-filter: blur(16px);
+  overflow: hidden;
 }
 
 .panel-header,
@@ -591,6 +592,8 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 .eyebrow {
@@ -651,6 +654,8 @@ onBeforeUnmount(() => {
   flex: 1;
   flex-direction: column;
   gap: 10px;
+  padding-left: 16px;
+  padding-right: 16px;
   min-height: 0;
   overflow-y: auto;
 }
