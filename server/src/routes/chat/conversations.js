@@ -187,22 +187,29 @@ conversationSubscriber.on("message", (channel, payload) => {
 
   try {
     const parsedPayload = JSON.parse(payload);
+    if (!parsedPayload || typeof parsedPayload !== "object") {
+      logger.error("conversation_update_subscriber_invalid_payload_type");
+      return;
+    }
+    const clientId =
+      typeof parsedPayload.userId === "string"
+        ? parsedPayload.userId.trim()
+        : null;
 
-    if (parsedPayload.userId) {
-      const targets = conversationStreamClients.get(parsedPayload.userId);
-      if (!targets?.size) {
-        return;
-      }
-      for (const res of targets) {
-        writeSSE(res, "conversation_updated", parsedPayload);
-      }
+    if (!clientId) {
+      logger.error("conversation_update_subscriber_without_clientId");
       return;
     }
 
-    for (const clientResponses of conversationStreamClients.values()) {
-      for (const res of clientResponses) {
-        writeSSE(res, "conversation_updated", parsedPayload);
-      }
+    const targets = conversationStreamClients.get(clientId);
+
+    if (!targets?.size) {
+      logger.error("conversation_update_subscriber_without_targets");
+      return;
+    }
+
+    for (const res of targets) {
+      writeSSE(res, "conversation_updated", parsedPayload);
     }
   } catch (error) {
     logger.error("conversation_update_subscriber_failed", error);
@@ -218,7 +225,7 @@ function getClientsCount() {
 
 export async function updateConversationStream(req, res) {
   const requestId = randomUUID();
-  const clientId = req.query.clientId;
+  const clientId = req.query?.clientId?.trim();
 
   if (!clientId) {
     return res.status(400).json({ error: "clientId is required" });

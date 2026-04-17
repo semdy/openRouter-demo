@@ -25,6 +25,11 @@ function release() {
 export async function completions(req, res) {
   const requestId = randomUUID();
   const requestStartedAt = Date.now();
+  const clientId = req.body?.clientId?.trim();
+
+  if (!clientId) {
+    return res.status(400).json({ error: "clientId is required" });
+  }
 
   if (!acquire()) {
     logger.info("chat_request_rejected", {
@@ -35,9 +40,11 @@ export async function completions(req, res) {
     return res.status(429).json({ error: "Too many requests" });
   }
 
-  const { prompt, conversationId, clientId, continuation } = req.body;
+  const { prompt, conversationId, continuation } = req.body;
   const resolvedConversationId =
-    typeof conversationId === "string" ? conversationId.trim() : randomUUID();
+    typeof conversationId === "string" && conversationId.trim().length > 0
+      ? conversationId.trim()
+      : randomUUID();
 
   logger.info("chat_request_started", {
     requestId,

@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import * as db from "../db/index.js";
 import { redis } from "../redis.js";
-// import { logger } from "../logger.js";
+import { logger } from "../logger.js";
 
 export const CONVERSATION_UPDATES_CHANNEL = "conversation-updates";
 
@@ -155,16 +155,22 @@ export async function updateConversationTitle(conversationId, title) {
     return null;
   }
 
-  // try {
-  //   await redis.publish(
-  //     CONVERSATION_UPDATES_CHANNEL,
-  //     JSON.stringify({ ...conversation }),
-  //   );
-  // } catch (error) {
-  //   logger.error("conversation_title_update_publish_failed", error, {
-  //     conversationId,
-  //   });
-  // }
+  if (conversation.userId) {
+    try {
+      await redis.publish(
+        CONVERSATION_UPDATES_CHANNEL,
+        JSON.stringify(conversation),
+      );
+    } catch (error) {
+      logger.error("conversation_title_update_publish_failed", error, {
+        conversationId,
+      });
+    }
+  } else {
+    logger.info("conversation_title_update_publish_without_clientId", {
+      conversationId,
+    });
+  }
 
   return conversation;
 }
