@@ -1,3 +1,4 @@
+import { logger } from "../logger.js";
 import { pool } from "./index.js";
 
 export async function initDB() {
@@ -75,5 +76,5 @@ export async function initDB() {
     ON conversations(last_message_at DESC);
   `);
 
-  console.log("DB initialized");
+  logger.info("DB initialized");
 }
