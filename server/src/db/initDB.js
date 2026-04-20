@@ -23,6 +23,7 @@ export async function initDB() {
       content TEXT,
       message_index INTEGER,
       model TEXT,
+      status TEXT,
       metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
@@ -42,6 +43,7 @@ export async function initDB() {
       ADD COLUMN IF NOT EXISTS message_id TEXT,
       ADD COLUMN IF NOT EXISTS message_index INTEGER,
       ADD COLUMN IF NOT EXISTS model TEXT,
+      ADD COLUMN IF NOT EXISTS status TEXT,
       ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
   `);
 

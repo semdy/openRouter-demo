@@ -96,7 +96,7 @@ export async function completions(req, res) {
       conversationId: resolvedConversationId,
       userId: clientId,
       continuation,
-      onDelta: async (content) => {
+      onDelta: (content) => {
         writeSSE(res, "delta", { content });
       },
       isClientClosed: () => clientClosed,
@@ -110,6 +110,7 @@ export async function completions(req, res) {
     logger.error("chat_request_failed", err, {
       requestId,
       conversationId: resolvedConversationId,
+      status: "error",
       durationMs: Date.now() - requestStartedAt,
     });
     if (!res.writableEnded) {
@@ -125,6 +126,7 @@ export async function completions(req, res) {
       conversationId: resolvedConversationId,
       clientId,
       currentRequests,
+      status: "completed",
       durationMs: Date.now() - requestStartedAt,
       clientClosed,
     });

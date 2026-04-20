@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS messages (
   content TEXT,
   message_index INTEGER,
   model TEXT,
+  status TEXT,
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );

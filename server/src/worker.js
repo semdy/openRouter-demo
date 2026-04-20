@@ -130,7 +130,7 @@ async function handlePersist(data) {
     messages.forEach((msg, i) => {
       const idx = i * 7;
       values.push(
-        `($${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6}, $${idx + 7})`,
+        `($${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6}, $${idx + 7}), $${idx + 8})`,
       );
       params.push(
         msg.messageId,
@@ -139,6 +139,7 @@ async function handlePersist(data) {
         msg.content,
         msg.messageIndex ?? null,
         msg.model ?? null,
+        msg.status ?? null,
         JSON.stringify(msg.metadata ?? {}),
       );
     });
@@ -152,6 +153,7 @@ async function handlePersist(data) {
           content,
           message_index,
           model,
+          status,
           metadata
         )
         VALUES ${values.join(",")}

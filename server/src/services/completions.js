@@ -26,13 +26,22 @@ export async function streamChatCompletion({
   const requestHistory = [...history];
 
   if (continuation) {
-    requestHistory.push({
-      role: "user",
-      content: CONTINUE_PROMPT,
-    });
+    if (prompt) {
+      requestHistory.push({
+        role: "user",
+        content: prompt + "\n\n" + CONTINUE_PROMPT,
+      });
+    } else {
+      requestHistory.push({
+        role: "user",
+        content: CONTINUE_PROMPT,
+      });
+    }
   }
 
-  requestHistory.push({ role: "user", content: prompt });
+  if (prompt && !continuation) {
+    requestHistory.push({ role: "user", content: prompt });
+  }
 
   const messages = trimMessagesByTokens(requestHistory, MAX_PROMPT_TOKENS);
 
@@ -44,32 +53,58 @@ export async function streamChatCompletion({
   });
 
   const upstreamStartedAt = Date.now();
-  const stream = await chatClient.chat.send({
-    chatRequest: {
-      models: ["openai/gpt-5.4", "anthropic/claude-opus-4.6-fast"],
-      messages,
-      maxCompletionTokens: 47,
-      stream: true,
+
+  const controller = new AbortController();
+  const stream = await chatClient.chat.send(
+    {
+      chatRequest: {
+        models: ["openai/gpt-5.4", "anthropic/claude-opus-4.6-fast"],
+        messages,
+        maxCompletionTokens: 47,
+        stream: true,
+      },
     },
-  });
+    {
+      signal: controller.signal,
+    },
+  );
 
   let assistantReply = "";
-  await appendPartial(conversationId, "");
+  // await appendPartial(conversationId, "");
 
   let firstDeltaAt = null;
   let deltaCount = 0;
+  let status = "streaming";
 
   try {
-    let lastPersist = Date.now();
+    // let lastPersist = Date.now();
 
     for await (const chunk of stream) {
-      if (isClientClosed()) break;
-
-      if ("error" in chunk) {
-        throw new Error(`chat stream error: ${chunk.error.message}`);
+      if (isClientClosed()) {
+        status = "interrupted";
+        controller.abort();
+        break;
       }
 
-      const content = chunk.choices?.[0]?.delta?.content;
+      const choice = chunk.choices?.[0];
+
+      if ("error" in chunk) {
+        if (choice?.finishReason === "error") {
+          logger.error("chat_stream_error", {
+            requestId,
+            conversationId,
+            clientClosed: isClientClosed(),
+            hasAssistantReply: Boolean(assistantReply),
+            deltaCount,
+            status: "error",
+            durationMs: Date.now() - startedAt,
+          });
+
+          throw new Error(`chat stream error: ${chunk.error.message}`);
+        }
+      }
+
+      const content = choice?.delta?.content;
       if (!content) continue;
 
       if (firstDeltaAt === null) {
@@ -84,15 +119,22 @@ export async function streamChatCompletion({
       assistantReply += content;
       deltaCount++;
 
-      if (Date.now() - lastPersist > 200) {
-        await appendPartial(conversationId, assistantReply);
-        lastPersist = Date.now();
-      }
+      // if (Date.now() - lastPersist > 200) {
+      //   await appendPartial(conversationId, assistantReply);
+      //   lastPersist = Date.now();
+      // }
 
       await onDelta(content);
     }
+
+    if (status === "streaming") {
+      status = "completed";
+    }
+  } catch (err) {
+    status = "error";
+    throw err;
   } finally {
-    await clearPartial(conversationId);
+    // await clearPartial(conversationId);
   }
 
   if (isClientClosed() || !assistantReply) {
@@ -102,44 +144,72 @@ export async function streamChatCompletion({
       clientClosed: isClientClosed(),
       hasAssistantReply: Boolean(assistantReply),
       deltaCount,
+      status,
       durationMs: Date.now() - startedAt,
     });
     return;
   }
 
-  const nextMessageIndex = await reserveMessageIndexes(conversationId, 2);
-  const persistedMessages = [
-    {
-      messageId: randomUUID(),
-      role: "user",
-      content: prompt,
-      messageIndex: nextMessageIndex,
-      metadata: {
-        continuation,
+  let persistedMessages;
+  let updatedHistory;
+
+  if (continuation) {
+    const nextMessageIndex = await reserveMessageIndexes(conversationId, 1);
+    persistedMessages = [
+      {
+        messageId: randomUUID(),
+        role: "assistant",
+        content: assistantReply,
+        messageIndex: nextMessageIndex,
+        status,
+        model: "openai/gpt-5.4",
+        metadata: {
+          continuation: true,
+        },
       },
-    },
-    {
-      messageId: randomUUID(),
-      role: "assistant",
-      content: assistantReply,
-      messageIndex: nextMessageIndex + 1,
-      model: "openai/gpt-5.4",
-      metadata: {},
-    },
-  ];
-  const updatedHistory = [
-    ...history,
-    {
-      role: "user",
-      content: prompt,
-      messageIndex: nextMessageIndex,
-    },
-    {
-      role: "assistant",
-      content: assistantReply,
-      messageIndex: nextMessageIndex + 1,
-    },
-  ];
+    ];
+    updatedHistory = [
+      ...history,
+      {
+        role: "assistant",
+        content: assistantReply,
+        messageIndex: nextMessageIndex,
+      },
+    ];
+  } else {
+    const nextMessageIndex = await reserveMessageIndexes(conversationId, 2);
+    persistedMessages = [
+      {
+        messageId: randomUUID(),
+        role: "user",
+        content: prompt,
+        messageIndex: nextMessageIndex,
+        metadata: {},
+      },
+      {
+        messageId: randomUUID(),
+        role: "assistant",
+        content: assistantReply,
+        messageIndex: nextMessageIndex + 1,
+        status,
+        model: "openai/gpt-5.4",
+        metadata: {},
+      },
+    ];
+    updatedHistory = [
+      ...history,
+      {
+        role: "user",
+        content: prompt,
+        messageIndex: nextMessageIndex,
+      },
+      {
+        role: "assistant",
+        content: assistantReply,
+        messageIndex: nextMessageIndex + 1,
+      },
+    ];
+  }
 
   await saveHistory(conversationId, updatedHistory);
   try {
@@ -154,12 +224,14 @@ export async function streamChatCompletion({
       conversationId,
       jobId: job.id,
       deltaCount,
+      status,
       responseLength: assistantReply.length,
       durationMs: Date.now() - startedAt,
     });
   } catch (error) {
     logger.error("chat_persist_job_enqueue_failed", error, {
       requestId,
+      status,
       conversationId,
     });
     throw error;
@@ -169,6 +241,7 @@ export async function streamChatCompletion({
     requestId,
     conversationId,
     deltaCount,
+    status,
     responseLength: assistantReply.length,
     durationMs: Date.now() - startedAt,
   });

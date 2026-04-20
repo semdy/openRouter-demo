@@ -22,5 +22,5 @@ app.use((err, req, res, next) => {
 await initDB();
 
 app.listen(3000, () => {
-  logger.info("server_started", { port: 3000 });
+  logger.info("Server started", { port: 3000 });
 });

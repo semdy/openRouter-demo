@@ -5,7 +5,7 @@ export const PARTIAL_CACHE_TTL_SECONDS = 60 * 10;
 export const MAX_PROMPT_TOKENS = 8000;
 export const SYSTEM_PROMPT = "You are a helpful assistant.";
 export const CONTINUE_PROMPT = `
-继续完成上一个回答。
+请继续完成上一个回答。
 
 要求：
 1. 从已有内容的末尾继续

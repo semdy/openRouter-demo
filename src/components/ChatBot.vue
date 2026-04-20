@@ -122,6 +122,13 @@ function migrateConversationMessages(
   delete messagesByConversation.value[fromConversationId];
 }
 
+function getLastMessage(conversationId: string) {
+  const conversationMessages = ensureConversationMessages(conversationId);
+  const lastMsg = conversationMessages[conversationMessages.length - 1];
+
+  return lastMsg;
+}
+
 function createChatSession(
   conversationId?: string,
   draftId = draftConversationId.value,
@@ -135,11 +142,8 @@ function createChatSession(
       loading.value = true;
     },
     onReceiveChunk(chunk: string) {
-      const conversationMessages = ensureConversationMessages(draftId);
-      const lastAssistantMsg =
-        conversationMessages[conversationMessages.length - 1];
+      const lastAssistantMsg = getLastMessage(draftId);
       if (!lastAssistantMsg) return;
-
       lastAssistantMsg.content += chunk;
       lastAssistantMsg.nodes = parseMarkdownToStructure(
         lastAssistantMsg.content,
@@ -148,6 +152,10 @@ function createChatSession(
     },
     onCompletionError(error) {
       console.error(error);
+
+      const lastAssistantMsg = getLastMessage(draftId);
+      if (!lastAssistantMsg) return;
+      lastAssistantMsg.status = "error";
     },
     onCompletionFinally() {
       loading.value = false;
@@ -381,6 +389,13 @@ async function submitEditConversationTitle(conversationId: string) {
 }
 
 async function send() {
+  // stop generation
+  if (loading.value) {
+    chatSession?.abort();
+    loading.value = false;
+    return;
+  }
+
   const msg = input.value.trim();
   if (!msg || loading.value) return;
 
@@ -397,6 +412,15 @@ async function send() {
     );
     router.push(`/${persistedConversationId}`);
   }
+}
+
+async function continueSend(incompleteContent: string) {
+  if (loading.value) return;
+  const lastAssistantMsg = getLastMessage(activeConversationId.value);
+  if (lastAssistantMsg) {
+    lastAssistantMsg.status = "completed";
+  }
+  await chatSession?.continue(incompleteContent);
 }
 
 watch(
@@ -538,16 +562,28 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-else class="chat-render">
-          <template v-for="message in currentMessages" :key="message.messageId">
+          <template
+            v-for="(message, index) in currentMessages"
+            :key="message.messageId"
+          >
             <div v-if="message.role === 'user'" class="chat-message user">
               <div class="chat-content">{{ message.content }}</div>
             </div>
-            <MarkdownRender
-              v-else
-              class="chat-message assistant"
-              :nodes="message.nodes"
-              is-dark
-            />
+
+            <div v-else class="chat-message assistant">
+              <MarkdownRender :nodes="message.nodes" is-dark />
+              <button
+                v-if="
+                  index === currentMessages.length - 1 &&
+                  message.status === 'error'
+                "
+                type="button"
+                @click="continueSend(message.content)"
+                class="continue-btn"
+              >
+                继续
+              </button>
+            </div>
           </template>
         </div>
       </div>
@@ -555,8 +591,8 @@ onBeforeUnmount(() => {
       <div class="chat-input">
         <form @submit.prevent="send">
           <input v-model="input" type="text" placeholder="有问题，尽管问" />
-          <button type="submit" :disabled="loading">
-            {{ loading ? "思考中..." : "发送" }}
+          <button type="submit" :disabled="!input && !loading">
+            {{ loading ? "停止" : "发送" }}
           </button>
         </form>
       </div>
@@ -820,11 +856,25 @@ onBeforeUnmount(() => {
 }
 
 .chat-message.assistant {
+  position: relative;
   max-width: min(85%, 780px);
   padding: 18px 20px;
   border-radius: 24px 24px 24px 10px;
   background: rgba(255, 255, 255, 0.82);
   box-shadow: 0 16px 32px rgba(37, 66, 63, 0.08);
+}
+
+.continue-btn {
+  position: absolute;
+  right: -12px;
+  top: 12px;
+  padding: 2px 8px;
+  transform: translateX(100%);
+  cursor: pointer;
+  background-color: #cc0000;
+  border: none;
+  border-radius: 999px;
+  font-size: 12px;
 }
 
 .chat-input {

@@ -4,6 +4,8 @@ export type Message = {
   role: "system" | "user" | "assistant";
   content: string;
   messageId: string;
+  status?: "streaming" | "interrupted" | "error" | "completed";
+  metadata: Record<string, unknown>;
   name?: string;
 };
 
@@ -37,7 +39,6 @@ export type ConversationListResponse = {
 export type ConversationMessageItem = Message & {
   messageIndex: number | null;
   model: string | null;
-  metadata: Record<string, unknown>;
   createdAt: string;
 };
 
@@ -166,14 +167,19 @@ export class ChatSession {
     }
   }
 
-  async send(userPrompt: string) {
+  async send(userPrompt: string, continuation?: boolean) {
     this.abort();
 
-    this.handleReceivedMessage({
-      role: "user",
-      content: userPrompt,
-      messageId: uuid(),
-    });
+    if (!continuation) {
+      this.handleReceivedMessage({
+        role: "user",
+        content: userPrompt,
+        messageId: uuid(),
+        metadata: {
+          continuation,
+        },
+      });
+    }
 
     this.controller = new AbortController();
 
@@ -181,10 +187,12 @@ export class ChatSession {
       prompt: string;
       clientId: string;
       conversationId?: string;
+      continuation?: boolean;
     } = {
       prompt: userPrompt,
       clientId: this.options.clientId ?? getOrCreateClientId(),
       conversationId: this.options.conversationId ?? undefined,
+      continuation,
     };
 
     const res = await fetch("/api/chat/completions", {
@@ -210,11 +218,14 @@ export class ChatSession {
 
     let streamBuffer = "";
 
-    this.handleReceivedMessage({
-      role: "assistant",
-      content: streamBuffer,
-      messageId: uuid(),
-    });
+    if (!continuation) {
+      this.handleReceivedMessage({
+        role: "assistant",
+        content: streamBuffer,
+        messageId: uuid(),
+        metadata: {},
+      });
+    }
 
     try {
       while (true) {
@@ -252,6 +263,13 @@ export class ChatSession {
     }
 
     return assignedConversationId;
+  }
+
+  continue(incompleteContent?: string) {
+    if (!incompleteContent || !incompleteContent.trim()) {
+      throw new Error("No incomplete content to continue");
+    }
+    return this.send(incompleteContent || "", true);
   }
 
   handleReceivedMessage(message: Message) {
