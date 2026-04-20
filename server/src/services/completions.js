@@ -18,6 +18,7 @@ export async function streamChatCompletion({
   userId,
   requestId,
   continuation,
+  continuationMessageId,
   onDelta,
   isClientClosed,
 }) {
@@ -75,6 +76,7 @@ export async function streamChatCompletion({
   let firstDeltaAt = null;
   let deltaCount = 0;
   let status = "streaming";
+  let messageId = randomUUID();
 
   try {
     // let lastPersist = Date.now();
@@ -124,7 +126,7 @@ export async function streamChatCompletion({
       //   lastPersist = Date.now();
       // }
 
-      await onDelta(content);
+      await onDelta({ content, messageId });
     }
 
     if (status === "streaming") {
@@ -132,6 +134,7 @@ export async function streamChatCompletion({
     }
   } catch (err) {
     status = "error";
+    err.messageId = messageId;
     throw err;
   } finally {
     // await clearPartial(conversationId);
@@ -157,10 +160,11 @@ export async function streamChatCompletion({
     const nextMessageIndex = await reserveMessageIndexes(conversationId, 1);
     persistedMessages = [
       {
-        messageId: randomUUID(),
+        messageId,
         role: "assistant",
         content: assistantReply,
         messageIndex: nextMessageIndex,
+        parentMessageId: continuationMessageId,
         status,
         model: "openai/gpt-5.4",
         metadata: {
@@ -187,7 +191,7 @@ export async function streamChatCompletion({
         metadata: {},
       },
       {
-        messageId: randomUUID(),
+        messageId,
         role: "assistant",
         content: assistantReply,
         messageIndex: nextMessageIndex + 1,

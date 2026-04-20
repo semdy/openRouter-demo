@@ -104,6 +104,55 @@ function toMessageWithNodes(
   return normalized;
 }
 
+function mergeContinuedMessagesIfNeeded(
+  messages: ConversationMessageItem[],
+): ConversationMessageItem[] {
+  const result: ConversationMessageItem[] = [];
+
+  const childrenMap = new Map<string, ConversationMessageItem[]>();
+
+  for (const msg of messages) {
+    if (msg.parentMessageId) {
+      if (!childrenMap.has(msg.parentMessageId)) {
+        childrenMap.set(msg.parentMessageId, []);
+      }
+      childrenMap.get(msg.parentMessageId)!.push(msg);
+    }
+  }
+
+  for (const msg of messages) {
+    if (msg.parentMessageId) {
+      continue;
+    }
+
+    if (msg.role !== "assistant") {
+      result.push(msg);
+      continue;
+    }
+
+    const children = childrenMap.get(msg.messageId);
+
+    if (!children || children.length === 0) {
+      result.push(msg);
+      continue;
+    }
+
+    const mergedContent = children.reduce(
+      (acc, cur) => acc + cur.content,
+      msg.content,
+    );
+
+    const merged: ConversationMessageItem = {
+      ...msg,
+      content: mergedContent,
+    };
+
+    result.push(merged);
+  }
+
+  return result;
+}
+
 function migrateConversationMessages(
   fromConversationId: string,
   toConversationId: string,
@@ -141,9 +190,12 @@ function createChatSession(
       conversationMessages.push(message);
       loading.value = true;
     },
-    onReceiveChunk(chunk: string) {
+    onReceiveChunk(chunk: string, messageId: string) {
       const lastAssistantMsg = getLastMessage(draftId);
       if (!lastAssistantMsg) return;
+      if (!lastAssistantMsg.content) {
+        lastAssistantMsg.messageId = messageId;
+      }
       lastAssistantMsg.content += chunk;
       lastAssistantMsg.nodes = parseMarkdownToStructure(
         lastAssistantMsg.content,
@@ -275,7 +327,7 @@ async function loadConversationMessages(conversationId: string) {
       return;
     }
     messagesByConversation.value[conversationId] =
-      result.items.map(toMessageWithNodes);
+      mergeContinuedMessagesIfNeeded(result.items).map(toMessageWithNodes);
   } catch (error) {
     conversationMessagesError.value =
       error instanceof Error ? error.message : "聊天消息加载失败";
@@ -414,13 +466,16 @@ async function send() {
   }
 }
 
-async function continueSend(incompleteContent: string) {
+async function continueSend(incompleteMessage: Message) {
   if (loading.value) return;
   const lastAssistantMsg = getLastMessage(activeConversationId.value);
   if (lastAssistantMsg) {
     lastAssistantMsg.status = "completed";
   }
-  await chatSession?.continue(incompleteContent);
+  await chatSession?.continue(
+    incompleteMessage.content,
+    incompleteMessage.messageId,
+  );
 }
 
 watch(
@@ -575,10 +630,11 @@ onBeforeUnmount(() => {
               <button
                 v-if="
                   index === currentMessages.length - 1 &&
-                  message.status === 'error'
+                  message.status === 'error' &&
+                  !!message.content
                 "
                 type="button"
-                @click="continueSend(message.content)"
+                @click="continueSend(message)"
                 class="continue-btn"
               >
                 继续

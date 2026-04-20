@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE TABLE IF NOT EXISTS messages (
   id BIGSERIAL PRIMARY KEY,
   message_id TEXT,
+  parent_message_id TEXT DEFAULT NULL,
   conversation_id TEXT,
   role TEXT,
   content TEXT,

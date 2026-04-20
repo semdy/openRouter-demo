@@ -40,7 +40,8 @@ export async function completions(req, res) {
     return res.status(429).json({ error: "Too many requests" });
   }
 
-  const { prompt, conversationId, continuation } = req.body;
+  const { prompt, conversationId, continuation, continuationMessageId } =
+    req.body;
   const resolvedConversationId =
     typeof conversationId === "string" && conversationId.trim().length > 0
       ? conversationId.trim()
@@ -51,6 +52,7 @@ export async function completions(req, res) {
     conversationId: resolvedConversationId,
     clientId,
     continuation,
+    continuationMessageId,
     promptLength: prompt?.length ?? 0,
     currentRequests,
   });
@@ -96,8 +98,9 @@ export async function completions(req, res) {
       conversationId: resolvedConversationId,
       userId: clientId,
       continuation,
-      onDelta: (content) => {
-        writeSSE(res, "delta", { content });
+      continuationMessageId,
+      onDelta: (delta) => {
+        writeSSE(res, "delta", delta);
       },
       isClientClosed: () => clientClosed,
     });
@@ -116,6 +119,7 @@ export async function completions(req, res) {
     if (!res.writableEnded) {
       writeSSE(res, "error", {
         message: err.message,
+        messageId: err.messageId,
       });
       res.end();
     }

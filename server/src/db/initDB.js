@@ -18,6 +18,7 @@ export async function initDB() {
     CREATE TABLE IF NOT EXISTS messages (
       id BIGSERIAL PRIMARY KEY,
       message_id TEXT,
+      parent_message_id TEXT DEFAULT NULL,
       conversation_id TEXT,
       role TEXT,
       content TEXT,
@@ -41,6 +42,7 @@ export async function initDB() {
   await pool.query(`
     ALTER TABLE messages
       ADD COLUMN IF NOT EXISTS message_id TEXT,
+      ADD COLUMN IF NOT EXISTS parent_message_id TEXT,
       ADD COLUMN IF NOT EXISTS message_index INTEGER,
       ADD COLUMN IF NOT EXISTS model TEXT,
       ADD COLUMN IF NOT EXISTS status TEXT,

@@ -130,10 +130,11 @@ async function handlePersist(data) {
     messages.forEach((msg, i) => {
       const idx = i * 7;
       values.push(
-        `($${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6}, $${idx + 7}), $${idx + 8})`,
+        `($${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6}, $${idx + 7}), $${idx + 8}), $${idx + 8}), $${idx + 9})`,
       );
       params.push(
         msg.messageId,
+        msg.parentMessageId ?? null,
         conversationId,
         msg.role,
         msg.content,
@@ -148,6 +149,7 @@ async function handlePersist(data) {
       `
         INSERT INTO messages (
           message_id,
+          parent_message_id,
           conversation_id,
           role,
           content,

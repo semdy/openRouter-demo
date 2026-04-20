@@ -42,6 +42,7 @@ function mapConversationRow(row) {
 function mapMessageRow(row) {
   return {
     messageId: row.messageId,
+    parentMessageId: row.parentMessageId,
     conversationId: row.conversationId,
     role: row.role,
     content: row.content,
@@ -236,6 +237,7 @@ export async function getConversationMessages(conversationId) {
     `
       SELECT
         message_id AS "messageId",
+        parent_message_id AS "parentMessageId",
         role,
         content,
         message_index AS "messageIndex",

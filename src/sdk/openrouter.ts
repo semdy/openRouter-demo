@@ -13,7 +13,7 @@ export type ChatSessionOptions = {
   conversationId?: string;
   clientId?: string;
   onReceiveMessage?: (message: Message) => void;
-  onReceiveChunk?: (chunk: string) => void;
+  onReceiveChunk?: (chunk: string, messageId: string) => void;
   onCompletionError?: (error: Error) => void;
   onCompletionDone?: () => void;
   onCompletionFinally?: () => void;
@@ -167,8 +167,10 @@ export class ChatSession {
     }
   }
 
-  async send(userPrompt: string, continuation?: boolean) {
+  async send(userPrompt: string, continuationMessageId?: string) {
     this.abort();
+
+    const continuation = !!continuationMessageId;
 
     if (!continuation) {
       this.handleReceivedMessage({
@@ -188,11 +190,13 @@ export class ChatSession {
       clientId: string;
       conversationId?: string;
       continuation?: boolean;
+      continuationMessageId?: string;
     } = {
       prompt: userPrompt,
       clientId: this.options.clientId ?? getOrCreateClientId(),
       conversationId: this.options.conversationId ?? undefined,
       continuation,
+      continuationMessageId,
     };
 
     const res = await fetch("/api/chat/completions", {
@@ -246,9 +250,9 @@ export class ChatSession {
           const data = JSON.parse(parsedFrame.data);
 
           if (parsedFrame.event === "delta") {
-            this.handleReceivedChunk(data.content);
+            this.handleReceivedChunk(data.content, data.messageId);
           } else if (parsedFrame.event === "error") {
-            this.handleReceivedChunk(data.message);
+            this.handleReceivedChunk(data.message, data.messageId);
             throw new Error(data.message);
           } else if (parsedFrame.event === "end") {
             this.options.onCompletionDone?.();
@@ -265,19 +269,19 @@ export class ChatSession {
     return assignedConversationId;
   }
 
-  continue(incompleteContent?: string) {
+  continue(incompleteContent: string, incompleteMessageId: string) {
     if (!incompleteContent || !incompleteContent.trim()) {
       throw new Error("No incomplete content to continue");
     }
-    return this.send(incompleteContent || "", true);
+    return this.send(incompleteContent, incompleteMessageId);
   }
 
   handleReceivedMessage(message: Message) {
     this.options.onReceiveMessage?.(message);
   }
 
-  handleReceivedChunk(content: string) {
-    this.options.onReceiveChunk?.(content);
+  handleReceivedChunk(content: string, messageId: string) {
+    this.options.onReceiveChunk?.(content, messageId);
   }
 
   abort() {
