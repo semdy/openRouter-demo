@@ -38,7 +38,6 @@ export type ConversationListResponse = {
 
 export type ConversationMessageItem = Message & {
   parentMessageId?: string | null;
-  conversationId?: string;
   messageIndex: number | null;
   model: string | null;
   createdAt: string;

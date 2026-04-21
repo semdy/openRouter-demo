@@ -244,7 +244,6 @@ export async function getConversationMessages(conversationId) {
       SELECT
         message_id AS "messageId",
         parent_message_id AS "parentMessageId",
-        conversation_id AS "conversationId",
         role,
         content,
         message_index AS "messageIndex",
