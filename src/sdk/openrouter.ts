@@ -37,6 +37,8 @@ export type ConversationListResponse = {
 };
 
 export type ConversationMessageItem = Message & {
+  parentMessageId?: string | null;
+  conversationId?: string;
   messageIndex: number | null;
   model: string | null;
   createdAt: string;
@@ -179,6 +181,7 @@ export class ChatSession {
         role: "user",
         content: userPrompt,
         messageId: uuid(),
+        status: "completed",
         metadata: {
           continuation,
         },
@@ -229,6 +232,7 @@ export class ChatSession {
         role: "assistant",
         content: streamBuffer,
         messageId: uuid(),
+        status: "streaming",
         metadata: {},
       });
     }
@@ -255,7 +259,10 @@ export class ChatSession {
             this.handleReceivedChunk(data.content, data.messageId);
           } else if (parsedFrame.event === "error") {
             this.handleReceivedChunk(data.message, data.messageId);
-            throw new Error(data.message);
+            const error = new Error(data.message);
+            (error as Error & { messageId?: string }).messageId =
+              data.messageId;
+            throw error;
           } else if (parsedFrame.event === "end") {
             this.options.onCompletionDone?.();
           }

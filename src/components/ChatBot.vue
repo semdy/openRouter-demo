@@ -95,6 +95,8 @@ function toMessageWithNodes(
     role: message.role,
     content: message.content,
     messageId: message.messageId,
+    status: message.status,
+    metadata: message.metadata ?? {},
   };
 
   if (normalized.role === "assistant") {
@@ -108,7 +110,9 @@ function mergeContinuedMessagesIfNeeded(
   messages: ConversationMessageItem[],
 ): ConversationMessageItem[] {
   const result: ConversationMessageItem[] = [];
-
+  const messagesById = new Map(
+    messages.map((message) => [message.messageId, message]),
+  );
   const childrenMap = new Map<string, ConversationMessageItem[]>();
 
   for (const msg of messages) {
@@ -120,8 +124,23 @@ function mergeContinuedMessagesIfNeeded(
     }
   }
 
+  const compareMessages = (
+    left: ConversationMessageItem,
+    right: ConversationMessageItem,
+  ) => {
+    const leftIndex = left.messageIndex ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = right.messageIndex ?? Number.MAX_SAFE_INTEGER;
+    if (leftIndex !== rightIndex) {
+      return leftIndex - rightIndex;
+    }
+
+    return (
+      new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+    );
+  };
+
   for (const msg of messages) {
-    if (msg.parentMessageId) {
+    if (msg.parentMessageId && messagesById.has(msg.parentMessageId)) {
       continue;
     }
 
@@ -131,20 +150,35 @@ function mergeContinuedMessagesIfNeeded(
     }
 
     const children = childrenMap.get(msg.messageId);
-
     if (!children || children.length === 0) {
       result.push(msg);
       continue;
     }
 
-    const mergedContent = children.reduce(
-      (acc, cur) => acc + cur.content,
-      msg.content,
-    );
+    let mergedContent = msg.content;
+    let tailMessage = msg;
+    let currentMessage = msg;
+
+    while (true) {
+      const nextChildren = [
+        ...(childrenMap.get(currentMessage.messageId) ?? []),
+      ].sort(compareMessages);
+      const nextMessage = nextChildren.at(-1);
+      if (!nextMessage) {
+        break;
+      }
+      mergedContent += nextMessage.content;
+      tailMessage = nextMessage;
+      currentMessage = nextMessage;
+    }
 
     const merged: ConversationMessageItem = {
-      ...msg,
+      ...tailMessage,
       content: mergedContent,
+      metadata: {
+        ...(msg.metadata ?? {}),
+        ...(tailMessage.metadata ?? {}),
+      },
     };
 
     result.push(merged);
@@ -197,6 +231,7 @@ function createChatSession(
         lastAssistantMsg.messageId = messageId;
       }
       lastAssistantMsg.content += chunk;
+      lastAssistantMsg.status = "streaming";
       lastAssistantMsg.nodes = parseMarkdownToStructure(
         lastAssistantMsg.content,
         md,
@@ -207,7 +242,15 @@ function createChatSession(
 
       const lastAssistantMsg = getLastMessage(draftId);
       if (!lastAssistantMsg) return;
-      lastAssistantMsg.status = "error";
+      lastAssistantMsg.status =
+        error instanceof DOMException && error.name === "AbortError"
+          ? "interrupted"
+          : "error";
+    },
+    onCompletionDone() {
+      const lastAssistantMsg = getLastMessage(draftId);
+      if (!lastAssistantMsg) return;
+      lastAssistantMsg.status = "completed";
     },
     onCompletionFinally() {
       loading.value = false;
@@ -470,7 +513,7 @@ async function continueSend(incompleteMessage: Message) {
   if (loading.value) return;
   const lastAssistantMsg = getLastMessage(activeConversationId.value);
   if (lastAssistantMsg) {
-    lastAssistantMsg.status = "completed";
+    lastAssistantMsg.status = "streaming";
   }
   await chatSession?.continue(
     incompleteMessage.content,
@@ -630,14 +673,21 @@ onBeforeUnmount(() => {
               <button
                 v-if="
                   index === currentMessages.length - 1 &&
-                  message.status === 'error' &&
+                  (message.status === 'error' ||
+                    message.status === 'interrupted') &&
                   !!message.content
                 "
                 type="button"
+                title="继续生成"
                 @click="continueSend(message)"
                 class="continue-btn"
               >
-                继续
+                <svg viewBox="0 0 1024 1024" width="20" height="20">
+                  <path
+                    d="M512 316.928v111.835429l182.857143-154.038858L512 124.342857V219.428571a292.571429 292.571429 0 1 0 292.571429 292.571429 48.786286 48.786286 0 1 0-97.499429 0A195.072 195.072 0 1 1 512 316.928zM512 1024A512 512 0 1 1 512 0a512 512 0 0 1 0 1024z"
+                    fill="#FF5E5B"
+                  ></path>
+                </svg>
               </button>
             </div>
           </template>
@@ -702,6 +752,11 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: 22px;
   line-height: 1.1;
+}
+
+.conversation-panel .panel-state {
+  margin-left: 16px;
+  margin-right: 16px;
 }
 
 .new-chat-button,
@@ -924,13 +979,11 @@ onBeforeUnmount(() => {
   position: absolute;
   right: -12px;
   top: 12px;
-  padding: 2px 8px;
+  padding: 0;
   transform: translateX(100%);
   cursor: pointer;
-  background-color: #cc0000;
+  background: none;
   border: none;
-  border-radius: 999px;
-  font-size: 12px;
 }
 
 .chat-input {

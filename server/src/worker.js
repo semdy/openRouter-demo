@@ -90,7 +90,7 @@ async function handlePersist(data) {
       `
         SELECT title
         FROM conversations
-        WHERE id = $1
+        WHERE conversation_id = $1
         FOR UPDATE
       `,
       [conversationId],
@@ -99,9 +99,9 @@ async function handlePersist(data) {
 
     await dbClient.query(
       `
-        INSERT INTO conversations (id, user_id, title, updated_at, last_message_at)
+        INSERT INTO conversations (conversation_id, user_id, title, updated_at, last_message_at)
         VALUES ($1, $2, $3, NOW(), NOW())
-        ON CONFLICT (id) DO UPDATE SET
+        ON CONFLICT (conversation_id) DO UPDATE SET
           user_id = COALESCE(EXCLUDED.user_id, conversations.user_id),
           title = COALESCE(conversations.title, EXCLUDED.title),
           updated_at = NOW(),
@@ -128,9 +128,9 @@ async function handlePersist(data) {
     const params = [];
 
     messages.forEach((msg, i) => {
-      const idx = i * 7;
+      const idx = i * 9;
       values.push(
-        `($${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6}, $${idx + 7}), $${idx + 8}), $${idx + 8}), $${idx + 9})`,
+        `($${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6}, $${idx + 7}, $${idx + 8}, $${idx + 9})`,
       );
       params.push(
         msg.messageId,
@@ -189,10 +189,10 @@ async function handlePersist(data) {
         await generateConversationTitleByLLM(generatedTitleInput);
       if (generatedTitle) {
         await db.query(
-          `
+        `
             UPDATE conversations
             SET title = $2, updated_at = NOW()
-            WHERE id = $1 AND (title IS NULL OR title = '')
+            WHERE conversation_id = $1 AND (title IS NULL OR title = '')
           `,
           [conversationId, generatedTitle],
         );

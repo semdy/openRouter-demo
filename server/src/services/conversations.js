@@ -5,11 +5,11 @@ import { logger } from "../logger.js";
 
 export const CONVERSATION_UPDATES_CHANNEL = "conversation-updates";
 
-function encodeCursor(lastMessageAt, id) {
+function encodeCursor(lastMessageAt, dbId) {
   return Buffer.from(
     JSON.stringify({
       lastMessageAt,
-      id,
+      dbId,
     }),
   ).toString("base64url");
 }
@@ -18,7 +18,7 @@ function decodeCursor(cursor) {
   if (!cursor) return null;
 
   const decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
-  if (!decoded?.lastMessageAt || !decoded?.id) {
+  if (!decoded?.lastMessageAt || !decoded?.dbId) {
     throw new Error("Invalid cursor");
   }
 
@@ -48,6 +48,7 @@ function mapMessageRow(row) {
     content: row.content,
     messageIndex: row.messageIndex,
     model: row.model,
+    status: row.status,
     metadata: row.metadata,
     createdAt: row.createdAt,
   };
@@ -57,7 +58,8 @@ export async function getConversationListItem(conversationId) {
   const result = await db.query(
     `
       SELECT
-        c.id,
+        c.conversation_id AS id,
+        c.id AS "dbId",
         c.user_id AS "userId",
         c.title,
         c.summary,
@@ -70,11 +72,11 @@ export async function getConversationListItem(conversationId) {
       LEFT JOIN LATERAL (
         SELECT role, content
         FROM messages
-        WHERE conversation_id = c.id
+        WHERE conversation_id = c.conversation_id
         ORDER BY message_index DESC NULLS LAST, created_at DESC, id DESC
         LIMIT 1
       ) m ON TRUE
-      WHERE c.id = $1
+      WHERE c.conversation_id = $1
       LIMIT 1
     `,
     [conversationId],
@@ -90,9 +92,9 @@ export async function listConversations({ clientId, cursor, pageSize = 20 }) {
 
   let cursorClause = "";
   if (decodedCursor) {
-    params.push(decodedCursor.lastMessageAt, decodedCursor.id, clientId);
+    params.push(decodedCursor.lastMessageAt, decodedCursor.dbId, clientId);
     cursorClause = `
-      WHERE (c.last_message_at, c.id) < ($2::timestamptz, $3::text) AND c.user_id = $4
+      WHERE (c.last_message_at, c.id) < ($2::timestamptz, $3::bigint) AND c.user_id = $4
     `;
   } else {
     params.push(clientId);
@@ -102,7 +104,8 @@ export async function listConversations({ clientId, cursor, pageSize = 20 }) {
   const result = await db.query(
     `
       SELECT
-        c.id,
+        c.conversation_id AS id,
+        c.id AS "dbId",
         c.user_id AS "userId",
         c.title,
         c.summary,
@@ -115,7 +118,7 @@ export async function listConversations({ clientId, cursor, pageSize = 20 }) {
       LEFT JOIN LATERAL (
         SELECT role, content
         FROM messages
-        WHERE conversation_id = c.id
+        WHERE conversation_id = c.conversation_id
         ORDER BY message_index DESC NULLS LAST, created_at DESC, id DESC
         LIMIT 1
       ) m ON TRUE
@@ -134,7 +137,7 @@ export async function listConversations({ clientId, cursor, pageSize = 20 }) {
     items: items.map(mapConversationRow),
     nextCursor:
       hasMore && lastItem
-        ? encodeCursor(lastItem.lastMessageAt, lastItem.id)
+        ? encodeCursor(lastItem.lastMessageAt, lastItem.dbId)
         : null,
   };
 }
@@ -144,8 +147,8 @@ export async function updateConversationTitle(conversationId, title) {
     `
       UPDATE conversations
       SET title = $2, updated_at = NOW()
-      WHERE id = $1
-      RETURNING id
+      WHERE conversation_id = $1
+      RETURNING conversation_id
     `,
     [conversationId, title],
   );
@@ -188,7 +191,7 @@ export async function deleteConversationCascade(conversationId) {
       `
         SELECT id
         FROM conversations
-        WHERE id = $1
+        WHERE conversation_id = $1
         FOR UPDATE
       `,
       [conversationId],
@@ -210,7 +213,7 @@ export async function deleteConversationCascade(conversationId) {
     await dbClient.query(
       `
         DELETE FROM conversations
-        WHERE id = $1
+        WHERE conversation_id = $1
       `,
       [conversationId],
     );
@@ -241,10 +244,12 @@ export async function getConversationMessages(conversationId) {
       SELECT
         message_id AS "messageId",
         parent_message_id AS "parentMessageId",
+        conversation_id AS "conversationId",
         role,
         content,
         message_index AS "messageIndex",
         model,
+        status,
         metadata,
         created_at AS "createdAt"
       FROM messages
