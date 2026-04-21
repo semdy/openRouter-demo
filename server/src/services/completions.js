@@ -23,11 +23,15 @@ export async function streamChatCompletion({
   isClientClosed,
 }) {
   const messageId = randomUUID();
+  const startedAt = Date.now();
+  const history = await getHistory(conversationId);
+
   let status = "streaming";
+  let assistantReply = "";
+  let deltaCount = 0;
+  let caughtError = null;
 
   try {
-    const startedAt = Date.now();
-    const history = await getHistory(conversationId);
     const requestHistory = [...history];
 
     if (continuation) {
@@ -74,9 +78,7 @@ export async function streamChatCompletion({
       },
     );
 
-    let assistantReply = "";
     let firstDeltaAt = null;
-    let deltaCount = 0;
 
     // let lastPersist = Date.now();
 
@@ -138,7 +140,7 @@ export async function streamChatCompletion({
       status = "error";
     }
     err.messageId = messageId;
-    throw err;
+    caughtError = err;
   } finally {
     // await clearPartial(conversationId);
   }
@@ -153,6 +155,9 @@ export async function streamChatCompletion({
       status,
       durationMs: Date.now() - startedAt,
     });
+    if (caughtError) {
+      throw caughtError;
+    }
     return;
   }
 
@@ -264,4 +269,8 @@ export async function streamChatCompletion({
     responseLength: assistantReply.length,
     durationMs: Date.now() - startedAt,
   });
+
+  if (caughtError) {
+    throw caughtError;
+  }
 }
