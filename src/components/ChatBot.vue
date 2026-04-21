@@ -242,8 +242,7 @@ function createChatSession(
 
       const lastAssistantMsg = getLastMessage(draftId);
       if (!lastAssistantMsg) return;
-      lastAssistantMsg.status =
-        error instanceof DOMException && error.name === "AbortError"
+      lastAssistantMsg.status = error.name === "AbortError"
           ? "interrupted"
           : "error";
     },
@@ -673,9 +672,8 @@ onBeforeUnmount(() => {
               <button
                 v-if="
                   index === currentMessages.length - 1 &&
-                  (message.status === 'error' ||
-                    message.status === 'interrupted') &&
-                  !!message.content
+                  message.status === 'error' &&
+                  message.content
                 "
                 type="button"
                 title="继续生成"
