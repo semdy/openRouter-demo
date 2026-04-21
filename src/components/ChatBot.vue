@@ -670,11 +670,7 @@ onBeforeUnmount(() => {
             <div v-else class="chat-message assistant">
               <MarkdownRender :nodes="message.nodes" is-dark />
               <button
-                v-if="
-                  index === currentMessages.length - 1 &&
-                  message.status === 'error' &&
-                  message.content
-                "
+                v-if="message.status === 'error' && message.content"
                 type="button"
                 title="继续生成"
                 @click="continueSend(message)"
