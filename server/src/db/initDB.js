@@ -93,7 +93,7 @@ export async function initDB() {
       ADD CONSTRAINT fk_parent_message
       FOREIGN KEY (parent_message_id)
       REFERENCES messages(message_id)
-      ON DELETE SET NULL;
+      ON DELETE CASCADE;
   `);
 
   // 创建索引
