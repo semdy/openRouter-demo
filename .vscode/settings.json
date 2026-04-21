@@ -25,6 +25,9 @@
     "src/languages"
   ],
   "cSpell.words": [
+    "conrelid",
+    "relname",
+    "conname",
     "chatdb",
     "isready",
     "initdb",

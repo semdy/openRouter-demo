@@ -82,18 +82,25 @@ export async function initDB() {
     ALTER COLUMN metadata SET NOT NULL;
   `);
 
+  // parent_message_id 外键
   await pool.query(`
-    ALTER TABLE messages
-    ADD CONSTRAINT messages_message_id_unique UNIQUE (message_id);
-  `);
-
-  // parent 外键
-  await pool.query(`
-    ALTER TABLE messages
-      ADD CONSTRAINT fk_parent_message
-      FOREIGN KEY (parent_message_id)
-      REFERENCES messages(message_id)
-      ON DELETE CASCADE;
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_class t ON c.conrelid = t.oid
+        WHERE c.conname = 'fk_parent_message'
+          AND t.relname = 'messages'
+      ) THEN
+        ALTER TABLE messages
+        ADD CONSTRAINT fk_parent_message
+        FOREIGN KEY (parent_message_id)
+        REFERENCES messages(message_id)
+        ON DELETE CASCADE;
+      END IF;
+    END
+    $$;
   `);
 
   // 创建索引
