@@ -95,7 +95,7 @@ export async function streamChatCompletion({
 
       if ("error" in chunk) {
         if (choice?.finishReason === "error") {
-          logger.error("chat_stream_error", {
+          logger.error("chat_stream_error", chunk.error, {
             requestId,
             conversationId,
             clientClosed: isClientClosed(),
@@ -105,7 +105,7 @@ export async function streamChatCompletion({
             durationMs: Date.now() - startedAt,
           });
 
-          throw new Error(`chat stream error: ${chunk.error.message}`);
+          throw chunk.error;
         }
       }
 

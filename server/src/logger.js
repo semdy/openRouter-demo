@@ -40,11 +40,13 @@ const logger = pino({
       ) {
         return method.apply(this, [event]);
       }
+      const _err =
+        error instanceof Error || error?.message || error?.stack ? error : {};
       return method.apply(this, [
         {
           msg: event,
-          errMsg: error instanceof Error ? error.message : undefined,
-          stack: error instanceof Error ? error.stack : undefined,
+          errMsg: _err.message,
+          stack: _err.stack,
           ...(fields || error),
         },
       ]);
