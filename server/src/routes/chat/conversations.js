@@ -11,6 +11,7 @@ import {
   listConversations,
   updateConversationTitle,
 } from "../../services/conversations.js";
+import { ApiError } from "../../shared.js";
 
 const router = express.Router();
 
@@ -50,9 +51,7 @@ export async function getConversations(req, res) {
       requestId,
       durationMs: Date.now() - requestStartedAt,
     });
-    res.status(400).json({
-      error: error.message,
-    });
+    throw new ApiError(error.message);
   }
 }
 
@@ -73,17 +72,17 @@ export async function updateConversation(req, res) {
   const title = typeof rawTitle === "string" ? rawTitle.trim() : "";
 
   if (!conversationId) {
-    return res.status(400).json({ error: "Invalid conversationId" });
+    throw new ApiError("Invalid conversationId");
   }
 
   if (!title) {
-    return res.status(400).json({ error: "title is required" });
+    throw new ApiError("title is required");
   }
 
   try {
     const conversation = await updateConversationTitle(conversationId, title);
     if (!conversation) {
-      return res.status(404).json({ error: "Conversation not found" });
+      throw new ApiError("Conversation not found");
     }
 
     logger.info("conversation_title_updated", {
@@ -93,7 +92,7 @@ export async function updateConversation(req, res) {
       durationMs: Date.now() - requestStartedAt,
     });
 
-    return res.json({ ...conversation });
+    return res.json(conversation);
   } catch (error) {
     logger.error("conversation_title_update_failed", error, {
       requestId,
@@ -101,7 +100,7 @@ export async function updateConversation(req, res) {
       durationMs: Date.now() - requestStartedAt,
     });
 
-    return res.status(400).json({ error: error.message });
+    throw new ApiError(error.message);
   }
 }
 
@@ -111,13 +110,13 @@ export async function deleteConversation(req, res) {
   const conversationId = getConversationIdParam(req);
 
   if (!conversationId) {
-    return res.status(400).json({ error: "Invalid conversationId" });
+    throw new ApiError("Invalid conversationId");
   }
 
   try {
     const result = await deleteConversationCascade(conversationId);
     if (!result) {
-      return res.status(404).json({ error: "Conversation not found" });
+      throw new ApiError("Conversation not found");
     }
 
     logger.info("conversation_deleted", {
@@ -139,7 +138,7 @@ export async function deleteConversation(req, res) {
       durationMs: Date.now() - requestStartedAt,
     });
 
-    return res.status(400).json({ error: error.message });
+    throw new ApiError(error.message);
   }
 }
 
@@ -149,13 +148,13 @@ export async function getConversationMessages(req, res) {
   const conversationId = getConversationIdParam(req);
 
   if (!conversationId) {
-    return res.status(400).json({ error: "Invalid conversationId" });
+    throw new ApiError("Invalid conversationId");
   }
 
   try {
     // const conversation = await getConversationListItem(conversationId);
     // if (!conversation) {
-    //   // return res.status(400).json({ error: "Conversation not found" });
+    //   // throw new ApiError("Conversation not found");
     //   return res.json({
     //     conversationId,
     //     items: [],
@@ -182,7 +181,7 @@ export async function getConversationMessages(req, res) {
       durationMs: Date.now() - requestStartedAt,
     });
 
-    return res.status(400).json({ error: error.message });
+    throw new ApiError(error.message);
   }
 }
 
@@ -237,7 +236,7 @@ export async function updateConversationStream(req, res) {
   const clientId = req.query?.clientId?.trim();
 
   if (!clientId) {
-    return res.status(400).json({ error: "clientId is required" });
+    throw new ApiError("clientId is required");
   }
 
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");

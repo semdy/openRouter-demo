@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { writeSSE } from "./shared.js";
 import { logger } from "../../logger.js";
 import { streamChatCompletion } from "../../services/completions.js";
+import { ApiError } from "../../shared.js";
 import { MAX_CONCURRENT } from "../../config.js";
 
 const router = express.Router();
@@ -28,7 +29,7 @@ export async function completions(req, res) {
   const clientId = req.body?.clientId?.trim();
 
   if (!clientId) {
-    return res.status(400).json({ error: "clientId is required" });
+    throw new ApiError("clientId is required");
   }
 
   if (!acquire()) {
@@ -37,7 +38,8 @@ export async function completions(req, res) {
       reason: "too_many_requests",
       currentRequests,
     });
-    return res.status(429).json({ error: "Too many requests" });
+
+    throw new ApiError("Too many requests", 429);
   }
 
   const { prompt, conversationId, continuation, continuationMessageId } =
@@ -46,6 +48,10 @@ export async function completions(req, res) {
     typeof conversationId === "string" && conversationId.trim().length > 0
       ? conversationId.trim()
       : randomUUID();
+
+  if (continuation && !continuationMessageId) {
+    throw new ApiError("continuationMessageId is required");
+  }
 
   logger.info("chat_request_started", {
     requestId,

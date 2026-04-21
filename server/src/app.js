@@ -16,7 +16,7 @@ app.get("/health/check", (_, res) => {
 });
 
 app.use((err, req, res, next) => {
-  res.status(400).json({ message: err.message });
+  res.status(err.statusCode || 400).json({ message: err.message });
 });
 
 await initDB();
