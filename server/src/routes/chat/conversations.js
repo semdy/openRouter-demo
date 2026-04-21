@@ -23,10 +23,15 @@ router.get("/:conversationId/messages", getConversationMessages);
 export async function getConversations(req, res) {
   const requestId = randomUUID();
   const requestStartedAt = Date.now();
-  const { cursor, pageSize } = req.query;
+  const { cursor, pageSize, clientId } = req.query;
+
+  if (!clientId) {
+    throw new Error("Invalid clientId");
+  }
 
   try {
     const result = await listConversations({
+      clientId,
       cursor: typeof cursor === "string" ? cursor : undefined,
       pageSize: typeof pageSize === "string" ? Number(pageSize) : undefined,
     });

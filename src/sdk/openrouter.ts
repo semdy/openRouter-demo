@@ -99,6 +99,8 @@ export async function fetchConversations(cursor?: string, pageSize = 20) {
     params.set("cursor", cursor);
   }
 
+  params.set("clientId", getOrCreateClientId());
+
   const query = params.toString();
   const res = await fetch(`/api/chat/conversations${query ? `?${query}` : ""}`);
   if (!res.ok) {

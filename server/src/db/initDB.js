@@ -17,12 +17,12 @@ export async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS messages (
       id BIGSERIAL PRIMARY KEY,
-      message_id TEXT,
-      parent_message_id TEXT DEFAULT NULL,
-      conversation_id TEXT,
-      role TEXT,
-      content TEXT,
-      message_index INTEGER,
+      message_id TEXT UNIQUE NOT NULL,
+      parent_message_id TEXT,
+      conversation_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      message_index INTEGER NOT NULL,
       model TEXT,
       status TEXT,
       metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -46,7 +46,7 @@ export async function initDB() {
       ADD COLUMN IF NOT EXISTS message_index INTEGER,
       ADD COLUMN IF NOT EXISTS model TEXT,
       ADD COLUMN IF NOT EXISTS status TEXT,
-      ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+      ADD COLUMN IF NOT EXISTS metadata JSONB;
   `);
 
   await pool.query(`
@@ -55,6 +55,48 @@ export async function initDB() {
     WHERE message_id IS NULL;
   `);
 
+  await pool.query(`
+    ALTER TABLE messages
+    ALTER COLUMN message_id SET NOT NULL;
+  `);
+
+  await pool.query(`
+    UPDATE messages
+    SET message_index = 0
+    WHERE message_index IS NULL;
+  `);
+
+  await pool.query(`
+    ALTER TABLE messages
+    ALTER COLUMN message_index SET NOT NULL;
+  `);
+
+  await pool.query(`
+    UPDATE messages
+    SET metadata = '{}'::jsonb
+    WHERE metadata IS NULL;
+  `);
+
+  await pool.query(`
+    ALTER TABLE messages
+    ALTER COLUMN metadata SET NOT NULL;
+  `);
+
+  await pool.query(`
+    ALTER TABLE messages
+    ADD CONSTRAINT messages_message_id_unique UNIQUE (message_id);
+  `);
+
+  // parent 外键
+  await pool.query(`
+    ALTER TABLE messages
+      ADD CONSTRAINT fk_parent_message
+      FOREIGN KEY (parent_message_id)
+      REFERENCES messages(message_id)
+      ON DELETE SET NULL;
+  `);
+
+  // 创建索引
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_messages_conversation_id
     ON messages(conversation_id);
@@ -68,6 +110,11 @@ export async function initDB() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_messages_conversation_message_index
     ON messages(conversation_id, message_index);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation_last_message
+    ON messages (conversation_id, message_index DESC, created_at DESC, id DESC);
   `);
 
   await pool.query(`

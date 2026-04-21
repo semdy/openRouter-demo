@@ -83,17 +83,20 @@ export async function getConversationListItem(conversationId) {
   return result.rows[0] ? mapConversationRow(result.rows[0]) : null;
 }
 
-export async function listConversations({ cursor, pageSize = 20 }) {
+export async function listConversations({ clientId, cursor, pageSize = 20 }) {
   pageSize = Math.min(Math.max(Number(pageSize) || 20, 1), 100);
   const decodedCursor = decodeCursor(cursor);
   const params = [pageSize + 1];
 
   let cursorClause = "";
   if (decodedCursor) {
-    params.push(decodedCursor.lastMessageAt, decodedCursor.id);
+    params.push(decodedCursor.lastMessageAt, decodedCursor.id, clientId);
     cursorClause = `
-      WHERE (c.last_message_at, c.id) < ($2::timestamptz, $3::text)
+      WHERE (c.last_message_at, c.id) < ($2::timestamptz, $3::text) AND c.user_id = $4
     `;
+  } else {
+    params.push(clientId);
+    cursorClause += `WHERE c.user_id = $2`;
   }
 
   const result = await db.query(

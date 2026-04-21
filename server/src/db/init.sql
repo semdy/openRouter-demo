@@ -12,12 +12,12 @@ CREATE TABLE IF NOT EXISTS conversations (
 
 CREATE TABLE IF NOT EXISTS messages (
   id BIGSERIAL PRIMARY KEY,
-  message_id TEXT,
-  parent_message_id TEXT DEFAULT NULL,
-  conversation_id TEXT,
-  role TEXT,
-  content TEXT,
-  message_index INTEGER,
+  message_id TEXT UNIQUE NOT NULL,
+  parent_message_id TEXT,
+  conversation_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  message_index INTEGER NOT NULL,
   model TEXT,
   status TEXT,
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -33,6 +33,9 @@ ON messages(conversation_id, created_at DESC, id DESC);
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_message_index
 ON messages(conversation_id, message_index);
+
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_last_message
+ON messages (conversation_id, message_index DESC, created_at DESC, id DESC);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_message_id_unique
 ON messages(message_id);
