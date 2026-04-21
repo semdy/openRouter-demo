@@ -15,6 +15,9 @@ export const query = async (text, params) => {
   if (duration > 100) {
     logger.warn("long_executed_query", { text, duration, rows: res.rowCount });
   }
+  //  else {
+  //   logger.info("query_executed", { text, duration, rows: res.rowCount });
+  // }
   return res;
 };
 
