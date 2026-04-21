@@ -81,4 +81,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_conversation_id_unique
 ON conversations(conversation_id);
 
 CREATE INDEX IF NOT EXISTS idx_conversations_last_message_at
-ON conversations(last_message_at DESC);
+ON conversations(last_message_at DESC, id DESC);

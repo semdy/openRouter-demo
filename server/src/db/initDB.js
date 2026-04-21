@@ -185,7 +185,7 @@ export async function initDB() {
 
     await dbClient.query(`
       CREATE INDEX IF NOT EXISTS idx_conversations_last_message_at
-      ON conversations(last_message_at DESC);
+      ON conversations(last_message_at DESC, id DESC);
     `);
 
     await dbClient.query(`
