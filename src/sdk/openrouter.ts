@@ -171,6 +171,8 @@ export class ChatSession {
   }
 
   async send(userPrompt: string, continuationMessageId?: string) {
+    let assignedConversationId;
+    try {
     this.abort();
 
     const continuation = !!continuationMessageId;
@@ -216,7 +218,7 @@ export class ChatSession {
       throw new Error(`Request failed with status ${res.status}`);
     }
 
-    const assignedConversationId = res.headers.get("X-Conversation-Id")?.trim();
+    assignedConversationId = res.headers.get("X-Conversation-Id")?.trim();
 
     const reader = res.body?.getReader();
 
@@ -234,9 +236,7 @@ export class ChatSession {
         status: "streaming",
         metadata: {},
       });
-    }
-
-    try {
+      
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
