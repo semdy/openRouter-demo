@@ -116,7 +116,7 @@ export async function deleteConversation(req, res) {
   try {
     const result = await deleteConversationCascade(conversationId);
     if (!result) {
-      throw new ApiError("Conversation not found");
+      throw new ApiError("Conversation not found", 404);
     }
 
     logger.info("conversation_deleted", {

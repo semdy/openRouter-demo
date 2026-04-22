@@ -1,3 +1,4 @@
+export const PORT = parseInt(process.env.PORT || "3000", 10);
 export const MAX_TURNS = 50; // keep last 50 rounds
 export const MAX_CONCURRENT = 5;
 export const CACHE_TTL_SECONDS = 60 * 60;

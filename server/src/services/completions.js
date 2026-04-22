@@ -274,3 +274,28 @@ export async function streamChatCompletion({
     throw caughtError;
   }
 }
+
+async function searchCompletions(query) {
+  const { rows } = await pool.query(
+    `
+      SELECT
+        message_id AS "messageId",
+        parent_message_id AS "parentMessageId",
+        role,
+        content,
+        message_index AS "messageIndex",
+        model,
+        status,
+        metadata,
+        created_at AS "createdAt"
+      FROM messages
+      WHERE content ILIKE $1 OR role ILIKE $1
+      ORDER BY
+        created_at DESC
+        LIMIT 50
+    `,
+    [`%${query}%`],
+  );
+
+  return rows;
+}

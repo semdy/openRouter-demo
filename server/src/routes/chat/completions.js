@@ -9,6 +9,7 @@ import { MAX_CONCURRENT } from "../../config.js";
 const router = express.Router();
 
 router.post("/", completions);
+router.get("/search", completionsSearch);
 
 // ===== Simple concurrency control =====
 let currentRequests = 0;
@@ -140,6 +141,21 @@ export async function completions(req, res) {
       durationMs: Date.now() - requestStartedAt,
       clientClosed,
     });
+  }
+}
+
+// Search completions
+async function completionsSearch(req, res) {
+  try {
+    const query = req.query.q;
+    if (!query) {
+      throw new ApiError("Search query required");
+    }
+    const rows = await searchCompletions(query);
+    res.json(rows);
+  } catch (error) {
+    logger.error("completions_search_failed", error);
+    throw new ApiError(error.message, 500);
   }
 }
 
