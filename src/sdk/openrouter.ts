@@ -173,70 +173,71 @@ export class ChatSession {
   async send(userPrompt: string, continuationMessageId?: string) {
     let assignedConversationId;
     try {
-    this.abort();
+      this.abort();
 
-    const continuation = !!continuationMessageId;
+      const continuation = !!continuationMessageId;
 
-    if (!continuation) {
-      this.handleReceivedMessage({
-        role: "user",
-        content: userPrompt,
-        messageId: uuid(),
-        status: "completed",
-        metadata: {
-          continuation,
+      if (!continuation) {
+        this.handleReceivedMessage({
+          role: "user",
+          content: userPrompt,
+          messageId: uuid(),
+          status: "completed",
+          metadata: {
+            continuation,
+          },
+        });
+      }
+
+      this.controller = new AbortController();
+
+      const requestBody: {
+        prompt: string;
+        clientId: string;
+        conversationId?: string;
+        continuation?: boolean;
+        continuationMessageId?: string;
+      } = {
+        prompt: userPrompt,
+        clientId: this.options.clientId ?? getOrCreateClientId(),
+        conversationId: this.options.conversationId ?? undefined,
+        continuation,
+        continuationMessageId,
+      };
+
+      const res = await fetch("/api/chat/completions", {
+        method: "POST",
+        signal: this.controller.signal,
+        headers: {
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify(requestBody),
       });
-    }
 
-    this.controller = new AbortController();
+      if (!res.ok) {
+        throw new Error(`Request failed with status ${res.status}`);
+      }
 
-    const requestBody: {
-      prompt: string;
-      clientId: string;
-      conversationId?: string;
-      continuation?: boolean;
-      continuationMessageId?: string;
-    } = {
-      prompt: userPrompt,
-      clientId: this.options.clientId ?? getOrCreateClientId(),
-      conversationId: this.options.conversationId ?? undefined,
-      continuation,
-      continuationMessageId,
-    };
+      assignedConversationId = res.headers.get("X-Conversation-Id")?.trim();
 
-    const res = await fetch("/api/chat/completions", {
-      method: "POST",
-      signal: this.controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-    });
+      const reader = res.body?.getReader();
 
-    if (!res.ok) {
-      throw new Error(`Request failed with status ${res.status}`);
-    }
+      if (!reader) throw new Error("No reader");
 
-    assignedConversationId = res.headers.get("X-Conversation-Id")?.trim();
+      const decoder = new TextDecoder();
 
-    const reader = res.body?.getReader();
+      let streamBuffer = "";
 
-    if (!reader) throw new Error("No reader");
+      if (!continuation) {
+        this.handleReceivedMessage({
+          role: "assistant",
+          content: streamBuffer,
+          messageId: uuid(),
+          status: "streaming",
+          metadata: {},
+        });
+      }
 
-    const decoder = new TextDecoder();
-
-    let streamBuffer = "";
-
-    if (!continuation) {
-      this.handleReceivedMessage({
-        role: "assistant",
-        content: streamBuffer,
-        messageId: uuid(),
-        status: "streaming",
-        metadata: {},
-      });
-      
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -257,7 +258,7 @@ export class ChatSession {
           if (parsedFrame.event === "delta") {
             this.handleReceivedChunk(data.content, data.messageId);
           } else if (parsedFrame.event === "error") {
-            this.handleReceivedChunk(data.message, data.messageId);
+            // this.handleReceivedChunk(data.message, data.messageId);
             const error = new Error(data.message);
             (error as Error & { messageId?: string }).messageId =
               data.messageId;

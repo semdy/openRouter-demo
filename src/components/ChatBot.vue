@@ -240,11 +240,22 @@ function createChatSession(
     onCompletionError(error) {
       console.error(error);
 
-      const lastAssistantMsg = getLastMessage(draftId);
-      if (!lastAssistantMsg) return;
-      lastAssistantMsg.status = error.name === "AbortError"
-          ? "interrupted"
-          : "error";
+      const lastMsg = getLastMessage(draftId);
+      if (!lastMsg) return;
+
+      const isAbortError = error.name === "AbortError";
+
+      if (lastMsg.role === "assistant") {
+        if (lastMsg.content?.trim() === "") {
+          messagesByConversation.value[activeConversationId.value].pop();
+        } else {
+          lastMsg.status = isAbortError ? "interrupted" : "error";
+        }
+      }
+
+      if (!isAbortError) {
+        conversationMessagesError.value = error.message;
+      }
     },
     onCompletionDone() {
       const lastAssistantMsg = getLastMessage(draftId);
@@ -659,10 +670,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-else class="chat-render">
-          <template
-            v-for="(message, index) in currentMessages"
-            :key="message.messageId"
-          >
+          <template v-for="message in currentMessages" :key="message.messageId">
             <div v-if="message.role === 'user'" class="chat-message user">
               <div class="chat-content">{{ message.content }}</div>
             </div>
@@ -778,9 +786,12 @@ onBeforeUnmount(() => {
 }
 
 .panel-state.error {
-  background: rgba(191, 54, 12, 0.1);
+  position: sticky;
+  top: 0;
+  background: #f1e2d9;
   color: #9a3412;
   margin-bottom: 10px;
+  z-index: 1000;
 }
 
 .chat-messages .panel-state.loading {
