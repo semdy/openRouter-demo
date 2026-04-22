@@ -261,6 +261,7 @@ function createChatSession(
       const lastAssistantMsg = getLastMessage(draftId);
       if (!lastAssistantMsg) return;
       lastAssistantMsg.status = "completed";
+      updateConversationSummary(draftId, lastAssistantMsg.content);
     },
     onCompletionFinally() {
       loading.value = false;
@@ -371,6 +372,17 @@ async function loadConversations(loadMore = false) {
   }
 }
 
+function hoistConversationById(conversationId: string) {
+  const index = conversations.value.findIndex(
+    (conversation) => conversation.id === conversationId,
+  );
+  if (index > 0) {
+    const conversation = conversations.value[index];
+    conversations.value.splice(index, 1);
+    conversations.value.unshift(conversation);
+  }
+}
+
 async function loadConversationMessages(conversationId: string) {
   messageLoading.value = true;
   conversationMessagesError.value = "";
@@ -404,6 +416,13 @@ function startNewConversation() {
 function selectConversation(conversationId: string) {
   if (conversationId === routeConversationId.value) return;
   router.push(`/${conversationId}`);
+}
+
+function updateConversationSummary(conversationId: string, summary: string) {
+  const conversation = conversations.value.find((c) => c.id === conversationId);
+  if (!conversation) return;
+
+  conversation.lastMessageContent = summary;
 }
 
 async function removeConversation(conversationId: string) {
@@ -516,6 +535,9 @@ async function send() {
       persistedConversationId,
     );
     router.push(`/${persistedConversationId}`);
+  }
+  if (currentRouteConversationId) {
+    hoistConversationById(currentRouteConversationId);
   }
 }
 

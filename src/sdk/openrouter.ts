@@ -270,6 +270,7 @@ export class ChatSession {
       }
     } catch (error) {
       this.options.onCompletionError?.(error as unknown as Error);
+      throw error;
     } finally {
       this.controller = null;
       this.options.onCompletionFinally?.();
