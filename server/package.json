@@ -10,6 +10,7 @@
     "dev": "nodemon src/app.js",
     "dev:docker-build-and-up": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
     "dev:docker-up": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up",
+    "dev:docker-install": "docker compose exec app npm install",
     "prod:docker-build": "docker compose build",
     "prod:docker-up": "docker compose up -d",
     "prod:docker-build-and-up": "npm run prod:docker-build && npm run prod:docker-up",
