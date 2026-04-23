@@ -698,7 +698,11 @@ onBeforeUnmount(() => {
             </div>
 
             <div v-else class="chat-message assistant">
-              <MarkdownRender :nodes="message.nodes" is-dark />
+              <MarkdownRender
+                :nodes="message.nodes"
+                class="chat-message-render"
+                is-dark
+              />
               <button
                 v-if="message.status === 'error' && message.content"
                 type="button"
@@ -821,6 +825,12 @@ onBeforeUnmount(() => {
   left: 28px;
   right: 28px;
   top: 0;
+}
+
+.chat-message-render {
+  --ms-text-body: 0.9375rem;
+  --ms-text-h1: 2rem;
+  --ms-text-h2: 1.25rem;
 }
 
 .conversation-list {
@@ -990,6 +1000,7 @@ onBeforeUnmount(() => {
   border-radius: 22px 22px 8px 22px;
   background: linear-gradient(135deg, #134e4a, #0f766e);
   color: #f8faf9;
+  font-size: var(--ms-text-body, 0.9375rem);
   box-shadow: 0 16px 30px rgba(15, 118, 110, 0.16);
 }
 
